@@ -18,6 +18,12 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
+const ACTIVE_ATTENDANCE_MESSAGE = "Attendance can only be updated during an active scheduled session.";
+const ATTENDANCE_SAVE_ERROR_MESSAGE = "Attendance can only be updated during your active scheduled lesson.";
+const LESSON_NOTE_SAVE_ERROR_MESSAGE = "Lesson notes can only be updated during your active scheduled lesson.";
+const UNEXPECTED_SAVE_ERROR_MESSAGE =
+  "An unexpected error occurred while saving. Please try again or contact the coordinator.";
+
 type UserProfile = {
   id: string;
   email: string;
@@ -657,8 +663,8 @@ function App() {
       .select("id, lesson_id, class_id, student_id, status");
 
     if (attendanceError) {
-      setError(`Could not create attendance records: ${attendanceError.message}`);
       console.error("[Start session] Could not create attendance records", attendanceError);
+      setError(getFriendlySupabaseSaveError(attendanceError, "attendance"));
       return false;
     }
 
@@ -672,8 +678,9 @@ function App() {
   }
 
   async function finishSession(item: SummerSession) {
-    if (!canEditSessionRecord(item)) {
-      setError("Only a started session or a past session entry can be finished.");
+    const canFinishForRole = isCoordinator ? canCoordinatorEditSessionRecord(item) : canTeacherEditLiveSession(item);
+    if (!canFinishForRole) {
+      setError(isCoordinator ? "Only a started session or a past session entry can be finished." : ACTIVE_ATTENDANCE_MESSAGE);
       return;
     }
 
@@ -698,7 +705,9 @@ function App() {
       .eq("id", item.id)
       .is("finished_at", null);
 
-    if (!isPastSession(item)) {
+    if (isCoordinator && isPastSession(item)) {
+      // Coordinators may complete late-entry records without setting started_at.
+    } else {
       finishQuery = finishQuery.not("started_at", "is", null);
     }
 
@@ -706,8 +715,8 @@ function App() {
     if (updateError) {
       setError(updateError.message);
     } else {
-      await logActivity("session_finished", item, { late_entry: canUseLateEntry(item) });
-      if (canUseLateEntry(item)) {
+      await logActivity("session_finished", item, { late_entry: isCoordinator && canUseLateEntry(item) });
+      if (isCoordinator && canUseLateEntry(item)) {
         await logActivity("late_entry_updated", item, { update_type: "session_finished" });
       }
     }
@@ -718,8 +727,9 @@ function App() {
 
   async function markAttendance(item: SummerSession, studentId: string, status: AttendanceStatus) {
     if (!profile) return;
-    if (!canEditSessionRecord(item)) {
-      setError("Attendance can only be changed during a started session or as past session entry.");
+    const canMarkForRole = isCoordinator ? canCoordinatorEditSessionRecord(item) : canTeacherEditLiveSession(item);
+    if (!canMarkForRole) {
+      setError(ATTENDANCE_SAVE_ERROR_MESSAGE);
       return;
     }
     setActionLoading(true);
@@ -736,10 +746,11 @@ function App() {
       { onConflict: "lesson_id,student_id" },
     );
     if (attendanceError) {
-      setError(attendanceError.message);
+      console.error("[Attendance] Could not save attendance", attendanceError);
+      setError(getFriendlySupabaseSaveError(attendanceError, "attendance"));
     } else {
       await logActivity("attendance_updated", item, { student_id: studentId, status });
-      if (canUseLateEntry(item)) {
+      if (isCoordinator && canUseLateEntry(item)) {
         await logActivity("late_entry_updated", item, {
           update_type: "attendance_updated",
           student_id: studentId,
@@ -754,8 +765,13 @@ function App() {
 
   async function saveLessonNote(item: SummerSession, body: string) {
     if (!profile) return;
-    if (!canEditSessionRecord(item)) {
-      setError("Lesson notes can only be saved during a started session or as past session entry.");
+    const canSaveForRole = isCoordinator ? canCoordinatorEditSessionRecord(item) : canTeacherEditLiveSession(item);
+    if (!canSaveForRole) {
+      setError(
+        isCoordinator
+          ? "Lesson notes can only be saved during a started session or as past session entry."
+          : LESSON_NOTE_SAVE_ERROR_MESSAGE,
+      );
       return;
     }
     setActionLoading(true);
@@ -776,7 +792,8 @@ function App() {
       .maybeSingle();
 
     if (existingNoteError) {
-      setError(`Could not check existing lesson note: ${existingNoteError.message}`);
+      console.error("[Lesson note] Could not check existing lesson note", existingNoteError);
+      setError(getFriendlySupabaseSaveError(existingNoteError, "lesson_notes"));
       setActionLoading(false);
       return;
     }
@@ -801,10 +818,11 @@ function App() {
       : await supabase.from("lesson_notes").insert(notePayload);
 
     if (noteError) {
-      setError(noteError.message);
+      console.error("[Lesson note] Could not save lesson note", noteError);
+      setError(getFriendlySupabaseSaveError(noteError, "lesson_notes"));
     } else {
       await logActivity("lesson_note_saved", item, { note_length: body.trim().length });
-      if (canUseLateEntry(item)) {
+      if (isCoordinator && canUseLateEntry(item)) {
         await logActivity("late_entry_updated", item, { update_type: "lesson_note_saved" });
       }
     }
@@ -1162,7 +1180,7 @@ function CoordinatorSessionRow({
   const presentCount = item.students.filter((student) => student.attendanceStatus === "present").length;
   const lateCount = item.students.filter((student) => student.attendanceStatus === "late").length;
   const pendingCount = item.students.filter((student) => !student.attendanceStatus).length;
-  const editable = canEditSessionRecord(item);
+  const editable = canCoordinatorEditSessionRecord(item);
   const lateEntry = canUseLateEntry(item);
   const canFinish = editable && attendanceDone && noteDone;
 
@@ -1383,8 +1401,7 @@ function TeacherDashboard({
   const [noteDraft, setNoteDraft] = useState("");
   const sessionHasStarted = Boolean(selectedSession?.startedAt);
   const sessionHasFinished = Boolean(selectedSession?.finishedAt);
-  const lateEntry = selectedSession ? canUseLateEntry(selectedSession) : false;
-  const canEditSessionWork = selectedSession ? canEditSessionRecord(selectedSession) : false;
+  const canEditSessionWork = selectedSession ? canTeacherEditLiveSession(selectedSession) : false;
   const attendanceCompleted = selectedSession ? hasCompletedAttendance(selectedSession) : false;
   const noteSaved = Boolean(selectedSession?.note.trim());
   const canFinishSession = canEditSessionWork && attendanceCompleted && noteSaved;
@@ -1438,11 +1455,10 @@ function TeacherDashboard({
                 {formatTime(selectedSession.startsAt)}-{formatTime(selectedSession.endsAt)} ·{" "}
                 {selectedSession.location ?? "Room not set"}
               </p>
-              {lateEntry && <p className="test-mode-banner">Past session entry</p>}
               <SessionStatusBadges item={selectedSession} />
             </div>
             <div className="action-row">
-              {!sessionHasStarted && !lateEntry && (
+              {!sessionHasStarted && !sessionHasFinished && (
                 <button
                   type="button"
                   className="secondary"
@@ -1462,8 +1478,10 @@ function TeacherDashboard({
             </div>
           </div>
 
-          {!sessionHasStarted && !lateEntry ? (
+          {!sessionHasStarted ? (
             <div className="locked-panel">Start the session to unlock attendance controls.</div>
+          ) : !canEditSessionWork ? (
+            <div className="locked-panel">{ATTENDANCE_SAVE_ERROR_MESSAGE}</div>
           ) : selectedSession.students.length === 0 ? (
             <div className="locked-panel">
               No students were found for this session. Check the class enrollment import or RLS access to
@@ -1589,6 +1607,30 @@ function getInitials(name: string) {
     .toLocaleUpperCase();
 }
 
+function getFriendlySupabaseSaveError(error: unknown, table: "attendance" | "lesson_notes") {
+  if (isSupabasePermissionError(error)) {
+    return table === "attendance" ? ATTENDANCE_SAVE_ERROR_MESSAGE : LESSON_NOTE_SAVE_ERROR_MESSAGE;
+  }
+
+  return UNEXPECTED_SAVE_ERROR_MESSAGE;
+}
+
+function isSupabasePermissionError(error: unknown) {
+  const maybeError = error as { code?: string; message?: string; details?: string; hint?: string };
+  const text = [maybeError.code, maybeError.message, maybeError.details, maybeError.hint]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    text.includes("row-level security") ||
+    text.includes("violates row-level security policy") ||
+    text.includes("permission denied") ||
+    text.includes("insufficient privilege") ||
+    maybeError.code === "42501"
+  );
+}
+
 function hasCompletedAttendance(item: SummerSession) {
   return item.students.length > 0 && item.students.every((student) => student.attendanceStatus);
 }
@@ -1632,8 +1674,17 @@ function getSessionStartBlockedReason(item: SummerSession) {
   return null;
 }
 
-function canEditSessionRecord(item: SummerSession) {
+function canCoordinatorEditSessionRecord(item: SummerSession) {
   return !item.finishedAt && (Boolean(item.startedAt) || canUseLateEntry(item));
+}
+
+function canTeacherEditLiveSession(item: SummerSession) {
+  return (
+    Boolean(item.startedAt) &&
+    !item.finishedAt &&
+    item.lessonDate === getTodayDate() &&
+    isNowInsideSessionWindow(item)
+  );
 }
 
 function canUseLateEntry(item: SummerSession) {
