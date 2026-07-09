@@ -133,6 +133,8 @@ type ActivityLogRow = {
   details: Record<string, unknown> | null;
 };
 
+type HistoryFilter = "today" | "yesterday" | "week" | "all";
+
 const SESSION_OUTSIDE_SCHEDULE_MESSAGE = "This session cannot be started outside its scheduled time.";
 
 function App() {
@@ -1015,6 +1017,7 @@ function CoordinatorDashboard({
   onFinishSession: (item: SummerSession) => void;
 }) {
   const [sessionSearch, setSessionSearch] = useState("");
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("today");
   const linkedTeachers = teachers.filter((item) => item.user_id);
   const sessionById = new Map(sessions.map((item) => [item.id, item]));
   const teacherById = new Map(teachers.map((item) => [item.id, item]));
@@ -1034,14 +1037,6 @@ function CoordinatorDashboard({
       (item.location ?? "").toLowerCase().includes(searchText)
     );
   });
-  const studentsPresent = todaySessions.reduce(
-    (total, item) => total + item.students.filter((student) => student.attendanceStatus === "present").length,
-    0,
-  );
-  const studentsAbsent = todaySessions.reduce(
-    (total, item) => total + item.students.filter((student) => student.attendanceStatus === "absent").length,
-    0,
-  );
   const pastEntrySessions = sessions
     .filter(canUseLateEntry)
     .sort((a, b) => {
@@ -1049,6 +1044,12 @@ function CoordinatorDashboard({
       if (dateCompare !== 0) return dateCompare;
       return b.startsAt.localeCompare(a.startsAt);
     });
+  const activeSessions = todaySessions.filter((item) => item.startedAt && !item.finishedAt);
+  const completedSessions = todaySessions.filter((item) => item.finishedAt);
+  const upcomingSessions = todaySessions.filter((item) => !item.startedAt && !item.finishedAt);
+  const notesSubmitted = todaySessions.filter((item) => item.note.trim().length > 0).length;
+  const alerts = getCoordinatorAlerts(todaySessions);
+  const historySessions = getHistorySessions(sessions, historyFilter);
 
   return (
     <section className="dashboard coordinator-dashboard">
@@ -1058,7 +1059,7 @@ function CoordinatorDashboard({
           <div>
             <span className="eyebrow">Summer School Module</span>
             <h2>Coordinator Dashboard</h2>
-            <p>Live session tracking, teacher coverage, attendance, notes, and activity for the Sancaktepe campus.</p>
+            <p>Operations control panel for live sessions, teacher coverage, attendance, notes, alerts, and activity.</p>
           </div>
         </div>
         <div className="coordinator-hero-meta">
@@ -1072,19 +1073,37 @@ function CoordinatorDashboard({
           <h3>Today's Overview</h3>
           <p>Summer School Module operational snapshot</p>
         </div>
-        <div className="stats-grid overview-grid">
+        <div className="stats-grid overview-grid operations-overview-grid">
           <StatCard label="Sessions Today" value={stats?.todaySessionCount ?? 0} />
-          <StatCard label="Teachers Active" value={stats?.teacherCount ?? 0} />
-          <StatCard label="Students Present" value={studentsPresent} />
-          <StatCard label="Students Absent" value={studentsAbsent} />
-          <StatCard label="Notes Completed" value={stats?.notesCompletedCount ?? 0} />
+          <StatCard label="Active Sessions" value={activeSessions.length} />
+          <StatCard label="Completed Sessions" value={completedSessions.length} />
+          <StatCard label="Upcoming / Not Started" value={upcomingSessions.length} />
+          <StatCard label="Attendance Rate" value={getAttendanceRateLabel(todaySessions)} />
+          <StatCard label="Lesson Notes Submitted" value={`${notesSubmitted} / ${todaySessions.length}`} />
+          <StatCard label="Alerts" value={alerts.length} />
+        </div>
+        <div className="alerts-panel">
+          <div>
+            <h4>Alerts</h4>
+            <p>{alerts.length === 0 ? "No operational alerts right now." : `${alerts.length} items need attention.`}</p>
+          </div>
+          {alerts.length > 0 && (
+            <div className="alert-list">
+              {alerts.map((alert) => (
+                <article className="alert-item" key={alert.id}>
+                  <strong>{alert.label}</strong>
+                  <span>{alert.detail}</span>
+                </article>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
       <section className="session-group live-sessions-section">
         <div className="live-session-toolbar">
           <div className="section-heading compact">
-            <h3>Live Sessions</h3>
+            <h3>Live / Today's Sessions</h3>
             <p>{filteredTodaySessions.length} of {todaySessions.length} sessions shown</p>
           </div>
           <label className="search-field">
@@ -1115,13 +1134,12 @@ function CoordinatorDashboard({
                 onFinishSession={onFinishSession}
                 onMarkAttendance={onMarkAttendance}
                 onSaveNote={onSaveNote}
+                activityLogs={activityLogs}
               />
             ))}
           </div>
         )}
       </section>
-
-      <ActivityFeed logs={activityLogs} sessionById={sessionById} teacherById={teacherById} />
 
       <div className="panel management-panel">
         <div>
@@ -1145,14 +1163,37 @@ function CoordinatorDashboard({
         </div>
       </div>
 
-      {pastEntrySessions.length > 0 && (
-        <section className="session-group">
+      <section className="session-group">
+        <div className="live-session-toolbar">
           <div className="section-heading compact">
-            <h3>Past Session Entry</h3>
-            <p>{pastEntrySessions.length} unfinished past sessions</p>
+            <h3>Session History</h3>
+            <p>{historySessions.length} sessions in view</p>
           </div>
-          <div className="session-tracker session-card-grid">
-            {pastEntrySessions.map((item) => (
+          <div className="history-filter" aria-label="Session history filters">
+            {([
+              ["today", "Today"],
+              ["yesterday", "Yesterday"],
+              ["week", "This Week"],
+              ["all", "All Summer School"],
+            ] as const).map(([value, label]) => (
+              <button
+                className={historyFilter === value ? "chip selected" : "chip"}
+                key={value}
+                type="button"
+                onClick={() => setHistoryFilter(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {historySessions.length === 0 ? (
+          <div className="panel">
+            <p className="muted">No sessions found for this history filter.</p>
+          </div>
+        ) : (
+          <div className="session-tracker session-card-grid session-history-grid">
+            {historySessions.map((item) => (
               <CoordinatorSessionRow
                 actionLoading={actionLoading}
                 item={item}
@@ -1160,11 +1201,22 @@ function CoordinatorDashboard({
                 onFinishSession={onFinishSession}
                 onMarkAttendance={onMarkAttendance}
                 onSaveNote={onSaveNote}
+                activityLogs={activityLogs}
+                compact
               />
             ))}
           </div>
-        </section>
+        )}
+      </section>
+
+      {pastEntrySessions.length > 0 && (
+        <div className="panel late-entry-panel">
+          <strong>Late entry queue</strong>
+          <span>{pastEntrySessions.length} unfinished past sessions are available inside Session History after enabling editing.</span>
+        </div>
       )}
+
+      <ActivityFeed logs={activityLogs} sessionById={sessionById} teacherById={teacherById} />
 
       <div className="stats-grid support-stats">
         <StatCard label="Teacher Logins Linked" value={`${linkedTeachers.length} / ${teachers.length}`} />
@@ -1181,32 +1233,48 @@ function CoordinatorSessionRow({
   onMarkAttendance,
   onSaveNote,
   onFinishSession,
+  activityLogs,
+  compact = false,
 }: {
   item: SummerSession;
   actionLoading: boolean;
   onMarkAttendance: (item: SummerSession, studentId: string, status: AttendanceStatus) => void;
   onSaveNote: (item: SummerSession, body: string) => void;
   onFinishSession: (item: SummerSession) => void;
+  activityLogs: ActivityLogRow[];
+  compact?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [editingEnabled, setEditingEnabled] = useState(false);
   const [noteDraft, setNoteDraft] = useState(item.note);
   const lifecycle = getLifecycleStatus(item);
   const attendanceDone = hasCompletedAttendance(item);
   const noteDone = item.note.trim().length > 0;
+  const counts = getAttendanceCounts(item);
+  const presentStudents = item.students.filter((student) => student.attendanceStatus === "present");
+  const lateStudents = item.students.filter((student) => student.attendanceStatus === "late");
   const absentStudents = item.students.filter((student) => student.attendanceStatus === "absent");
-  const presentCount = item.students.filter((student) => student.attendanceStatus === "present").length;
-  const lateCount = item.students.filter((student) => student.attendanceStatus === "late").length;
-  const pendingCount = item.students.filter((student) => !student.attendanceStatus).length;
   const editable = canCoordinatorEditSessionRecord(item);
   const lateEntry = canUseLateEntry(item);
   const canFinish = editable && attendanceDone && noteDone;
+  const lessonActivity = activityLogs.filter((log) => log.lesson_id === item.id);
 
   useEffect(() => {
     setNoteDraft(item.note);
   }, [item.id, item.note]);
 
+  useEffect(() => {
+    setEditingEnabled(false);
+  }, [item.id]);
+
+  const enableEditing = () => {
+    if (window.confirm("You are about to modify teacher records. Continue?")) {
+      setEditingEnabled(true);
+    }
+  };
+
   return (
-    <article className="session-tracker-row">
+    <article className={compact ? "session-tracker-row compact-session-row" : "session-tracker-row"}>
       <div className="session-tracker-main">
         <div className="session-teacher teacher-identity">
           <span className="teacher-avatar" aria-hidden="true">
@@ -1218,12 +1286,12 @@ function CoordinatorSessionRow({
           </div>
         </div>
         <div className="session-info-block">
-          <span className="session-info-icon" aria-hidden="true">🕐</span>
+          <span className="session-info-icon" aria-hidden="true">Time</span>
           <span className="eyebrow">Time</span>
-          <strong>{formatTime(item.startsAt)}–{formatTime(item.endsAt)}</strong>
+          <strong>{formatTime(item.startsAt)}-{formatTime(item.endsAt)}</strong>
         </div>
         <div className="session-info-block">
-          <span className="session-info-icon" aria-hidden="true">📍</span>
+          <span className="session-info-icon" aria-hidden="true">Room</span>
           <span className="eyebrow">Room</span>
           <strong>{item.location ?? "Room not set"}</strong>
         </div>
@@ -1237,9 +1305,16 @@ function CoordinatorSessionRow({
           </span>
           {lateEntry && <span className="status-badge warning">Late entry</span>}
         </div>
+        <div className="session-summary-grid">
+          <span><strong>{counts.marked}/{item.students.length}</strong> marked</span>
+          <span><strong>{counts.present}</strong> present</span>
+          <span><strong>{counts.absent}</strong> absent</span>
+          <span>Started: <strong>{formatTimestamp(item.startedAt)}</strong></span>
+          <span>Finished: <strong>{formatTimestamp(item.finishedAt)}</strong></span>
+        </div>
         <div className="session-card-actions">
           <button className="secondary" type="button" onClick={() => setExpanded((value) => !value)}>
-            {expanded ? "▲ Hide details" : "▼ View details"}
+            {expanded ? "^ Hide details" : "v View details"}
           </button>
         </div>
       </div>
@@ -1249,7 +1324,12 @@ function CoordinatorSessionRow({
           <section>
             <h4>Lesson note</h4>
             {noteDone ? <p>{item.note}</p> : <p className="muted">No lesson note saved yet.</p>}
-            {editable && (
+            {editable && !editingEnabled && (
+              <button className="secondary enable-editing-button" type="button" onClick={enableEditing}>
+                Enable Editing
+              </button>
+            )}
+            {editable && editingEnabled && (
               <form
                 className="note-form compact-note"
                 onSubmit={(event) => {
@@ -1276,26 +1356,39 @@ function CoordinatorSessionRow({
           <section>
             <h4>Attendance summary</h4>
             <p>
-              {presentCount} present / {lateCount} late / {absentStudents.length} absent /{" "}
-              {pendingCount} pending / {item.students.length} total
+              {counts.present} present / {counts.late} late / {counts.absent} absent /{" "}
+              {counts.pending} pending / {item.students.length} total
             </p>
-            <h4>Absent students</h4>
-            {absentStudents.length === 0 ? (
-              <p className="muted">No absent students.</p>
-            ) : (
-              <ul className="compact-list">
-                {absentStudents.map((student) => (
-                  <li key={student.id}>{student.fullName}</li>
-                ))}
-              </ul>
-            )}
+            <div className="roster-columns">
+              <RosterList title="Present students" students={presentStudents} emptyText="No present students marked." />
+              <RosterList title="Late students" students={lateStudents} emptyText="No late students marked." />
+              <RosterList title="Absent students" students={absentStudents} emptyText="No absent students." />
+            </div>
           </section>
 
           <section>
             <h4>Session times</h4>
+            <p>Date: {formatDate(item.lessonDate)}</p>
+            <p>Scheduled: {formatTime(item.startsAt)}-{formatTime(item.endsAt)}</p>
             <p>Started: {formatTimestamp(item.startedAt)}</p>
             <p>Finished: {formatTimestamp(item.finishedAt)}</p>
-            {editable && (
+            <h4>Activity timeline</h4>
+            {lessonActivity.length === 0 ? (
+              <p className="muted">No activity recorded for this lesson yet.</p>
+            ) : (
+              <div className="timeline-list">
+                {lessonActivity.map((log) => (
+                  <article className="timeline-item" key={log.id}>
+                    <span>{getActivityIcon(log.action_type)}</span>
+                    <div>
+                      <strong>{getActivityLabel(log.action_type)}</strong>
+                      <p>{formatTimestamp(log.created_at)}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+            {editable && editingEnabled && (
               <button
                 type="button"
                 disabled={actionLoading || !canFinish}
@@ -1306,7 +1399,7 @@ function CoordinatorSessionRow({
             )}
           </section>
 
-          {editable && (
+          {editable && editingEnabled && (
             <section className="session-detail-wide">
               <h4>{lateEntry ? "Past session attendance entry" : "Attendance"}</h4>
               {item.students.length === 0 ? (
@@ -1341,6 +1434,31 @@ function CoordinatorSessionRow({
         </div>
       )}
     </article>
+  );
+}
+
+function RosterList({
+  title,
+  students,
+  emptyText,
+}: {
+  title: string;
+  students: SessionStudent[];
+  emptyText: string;
+}) {
+  return (
+    <div className="roster-column">
+      <h5>{title}</h5>
+      {students.length === 0 ? (
+        <p className="muted">{emptyText}</p>
+      ) : (
+        <ul className="compact-list">
+          {students.map((student) => (
+            <li key={student.id}>{student.fullName}</li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -1379,9 +1497,12 @@ function ActivityFeed({
 
             return (
               <article className="activity-feed-row" key={log.id}>
+                <span className="activity-icon" aria-hidden="true">{getActivityIcon(log.action_type)}</span>
+                <div>
+                  <strong>{teacherName}</strong>
+                  <span>{getActivityLabel(log.action_type)}</span>
+                </div>
                 <span>{formatTimestamp(log.created_at)}</span>
-                <strong>{teacherName}</strong>
-                <span>{getActivityLabel(log.action_type)}</span>
                 <span>{sessionLabel}</span>
               </article>
             );
@@ -1652,6 +1773,114 @@ function hasCompletedAttendance(item: SummerSession) {
   return item.students.length > 0 && item.students.every((student) => student.attendanceStatus);
 }
 
+function getAttendanceCounts(item: SummerSession) {
+  const present = item.students.filter((student) => student.attendanceStatus === "present").length;
+  const late = item.students.filter((student) => student.attendanceStatus === "late").length;
+  const absent = item.students.filter((student) => student.attendanceStatus === "absent").length;
+  const pending = item.students.filter((student) => !student.attendanceStatus).length;
+
+  return {
+    present,
+    late,
+    absent,
+    pending,
+    marked: item.students.length - pending,
+  };
+}
+
+function getAttendanceRateLabel(sessions: SummerSession[]) {
+  const totals = sessions.reduce(
+    (summary, item) => {
+      const counts = getAttendanceCounts(item);
+      return {
+        marked: summary.marked + counts.marked,
+        total: summary.total + item.students.length,
+      };
+    },
+    { marked: 0, total: 0 },
+  );
+
+  if (totals.total === 0) return "0%";
+  return `${Math.round((totals.marked / totals.total) * 100)}%`;
+}
+
+function getCoordinatorAlerts(todaySessions: SummerSession[]) {
+  const nowMinutes = getCurrentLocalMinutes();
+
+  return todaySessions.flatMap((item) => {
+    const alerts: { id: string; label: string; detail: string }[] = [];
+    const sessionLabel = `${item.teacherName} - ${formatTime(item.startsAt)}-${formatTime(item.endsAt)} - ${
+      item.location ?? "Room not set"
+    }`;
+
+    if (item.startedAt && !hasCompletedAttendance(item)) {
+      alerts.push({
+        id: `${item.id}-attendance`,
+        label: "Started session missing attendance",
+        detail: sessionLabel,
+      });
+    }
+
+    if (item.startedAt && item.note.trim().length === 0) {
+      alerts.push({
+        id: `${item.id}-note`,
+        label: "Started session missing lesson note",
+        detail: sessionLabel,
+      });
+    }
+
+    if (item.startedAt && !item.finishedAt) {
+      alerts.push({
+        id: `${item.id}-unfinished`,
+        label: "Unfinished active session",
+        detail: sessionLabel,
+      });
+    }
+
+    if (!item.startedAt && !item.finishedAt && nowMinutes > timeToMinutes(item.startsAt)) {
+      alerts.push({
+        id: `${item.id}-late-start`,
+        label: "Session not started after scheduled start",
+        detail: sessionLabel,
+      });
+    }
+
+    return alerts;
+  });
+}
+
+function getHistorySessions(sessions: SummerSession[], filter: HistoryFilter) {
+  const today = getTodayDate();
+  const yesterday = getDateOffset(today, -1);
+  const weekStart = getWeekStartDate(today);
+  const filtered = sessions.filter((item) => {
+    if (filter === "today") return item.lessonDate === today;
+    if (filter === "yesterday") return item.lessonDate === yesterday;
+    if (filter === "week") return item.lessonDate >= weekStart && item.lessonDate <= today;
+    return true;
+  });
+
+  return filtered.sort((a, b) => {
+    const dateCompare = b.lessonDate.localeCompare(a.lessonDate);
+    if (dateCompare !== 0) return dateCompare;
+    return `${a.startsAt}-${a.teacherName}`.localeCompare(`${b.startsAt}-${b.teacherName}`);
+  });
+}
+
+function getDateOffset(dateValue: string, offsetDays: number) {
+  const date = new Date(`${dateValue}T00:00:00`);
+  date.setDate(date.getDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
+}
+
+function getWeekStartDate(dateValue: string) {
+  const date = new Date(`${dateValue}T00:00:00`);
+  const day = date.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + mondayOffset);
+  return date.toISOString().slice(0, 10);
+}
+
 function getActiveSessions(sessions: SummerSession[]) {
   return sessions.filter((item) => item.startedAt && !item.finishedAt);
 }
@@ -1810,6 +2039,23 @@ function getActivityLabel(actionType: ActivityActionType) {
       return "Updated late entry";
     default:
       return actionType;
+  }
+}
+
+function getActivityIcon(actionType: ActivityActionType) {
+  switch (actionType) {
+    case "session_started":
+      return "Start";
+    case "attendance_updated":
+      return "Att";
+    case "lesson_note_saved":
+      return "Note";
+    case "session_finished":
+      return "Done";
+    case "late_entry_updated":
+      return "Late";
+    default:
+      return "Log";
   }
 }
 
