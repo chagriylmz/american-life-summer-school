@@ -883,15 +883,26 @@ function App() {
   }
 
   if (loading || profileLoading) {
-    return <main className="shell">Loading...</main>;
+    return (
+      <main className="loading-screen">
+        <img className="loading-logo" src="/logo.jpg" alt="American Life Language Institute" />
+        <span>Loading Campus Portal...</span>
+      </main>
+    );
   }
 
   if (!session || !profile) {
     return (
       <main className="auth-page">
         <section className="login-panel">
-          <p className="eyebrow">American Life Summer School</p>
-          <h1>Sign in</h1>
+          <div className="auth-brand">
+            <img src="/logo.jpg" alt="American Life Language Institute" />
+            <div>
+              <p className="eyebrow">Sancaktepe Branch</p>
+              <h1>Campus Portal</h1>
+              <span>American Life Language Institute</span>
+            </div>
+          </div>
           <form onSubmit={handleLogin} className="login-form">
             <label>
               Email
@@ -926,10 +937,13 @@ function App() {
   return (
     <main className="shell">
       <header className="topbar">
-        <div>
-          <p className="eyebrow">Signed in as {profile.role}</p>
-          <h1>American Life Summer School</h1>
-          <p className="user-name">{profile.full_name}</p>
+        <div className="app-brand">
+          <img src="/logo.jpg" alt="American Life Language Institute" />
+          <div>
+            <p className="eyebrow">Sancaktepe Branch</p>
+            <h1>American Life Language Institute</h1>
+            <p className="user-name">Campus Portal - Signed in as {profile.role} - {profile.full_name}</p>
+          </div>
         </div>
         <div className="topbar-actions">
           {installPrompt && (
@@ -974,7 +988,7 @@ function App() {
       {!isCoordinator && profile.role !== "teacher" && (
         <section className="panel">
           <h2>No dashboard yet</h2>
-          <p>This summer school flow is currently enabled for coordinators, admins, and teachers.</p>
+          <p>This campus portal module is currently enabled for coordinators, admins, and teachers.</p>
         </section>
       )}
     </main>
@@ -1039,10 +1053,13 @@ function CoordinatorDashboard({
   return (
     <section className="dashboard coordinator-dashboard">
       <div className="coordinator-hero">
-        <div>
-          <span className="eyebrow">American Life Summer School</span>
-          <h2>Coordinator Dashboard</h2>
-          <p>Live session tracking, teacher coverage, attendance, notes, and activity in one place.</p>
+        <div className="hero-brand-copy">
+          <img src="/logo.jpg" alt="American Life Language Institute" />
+          <div>
+            <span className="eyebrow">Summer School Module</span>
+            <h2>Coordinator Dashboard</h2>
+            <p>Live session tracking, teacher coverage, attendance, notes, and activity for the Sancaktepe campus.</p>
+          </div>
         </div>
         <div className="coordinator-hero-meta">
           <span>{formatDate(today)}</span>
@@ -1053,7 +1070,7 @@ function CoordinatorDashboard({
       <section className="session-group">
         <div className="section-heading compact">
           <h3>Today's Overview</h3>
-          <p>Summer school operational snapshot</p>
+          <p>Summer School Module operational snapshot</p>
         </div>
         <div className="stats-grid overview-grid">
           <StatCard label="Sessions Today" value={stats?.todaySessionCount ?? 0} />
@@ -1082,7 +1099,7 @@ function CoordinatorDashboard({
         </div>
         {todaySessions.length === 0 ? (
           <div className="panel">
-            <p className="muted">No summer school sessions are scheduled for today.</p>
+            <p className="muted">No Summer School Module sessions are scheduled for today.</p>
           </div>
         ) : filteredTodaySessions.length === 0 ? (
           <div className="panel">
@@ -1424,7 +1441,7 @@ function TeacherDashboard({
       <aside className="session-sidebar">
         <div className="section-heading compact">
           <h2>{teacher.display_name}</h2>
-          <p>Your imported summer school sessions</p>
+          <p>Teacher Dashboard · Summer School Module</p>
         </div>
         <div className="session-tabs">
           {sessions.length === 0 ? (
