@@ -1,0 +1,72 @@
+{
+  "sheet_name": "YAZ OKULU-SINIF PLANLANMASI(TAS",
+  "visibility": "visible",
+  "classes": [
+    {
+      "teacher": "ONUR",
+      "room": "106",
+      "session_time": "13:00-15:20",
+      "student_count": 12,
+      "source_header": "P.TESİ-SALI-ÇARŞAMBA 13:00 – 15:20 SEANSI -SON DERS SAATI ( 14:40-15:20) ETKİNLİK.               "
+    },
+    {
+      "teacher": "SEVDE",
+      "room": "108",
+      "session_time": "13:00-15:20",
+      "student_count": 12,
+      "source_header": "P.TESİ-SALI-ÇARŞAMBA 13:00 – 15:20 SEANSI -SON DERS SAATI ( 14:40-15:20) ETKİNLİK.               "
+    },
+    {
+      "teacher": "HÜMEYRA",
+      "room": "107",
+      "session_time": "13:00-15:20",
+      "student_count": 12,
+      "source_header": "P.TESİ-SALI-ÇARŞAMBA 13:00 – 15:20 SEANSI -SON DERS SAATI ( 14:40-15:20) ETKİNLİK.               "
+    },
+    {
+      "teacher": "SEVDE",
+      "room": "108",
+      "session_time": "15:30-17:50",
+      "student_count": 12,
+      "source_header": "P.TESİ-SALI-ÇARŞAMBA 15:30 – 17:50 SEANSI-SON DERS SAATI ( 17:10-17:50) ETKİNLİK.               "
+    },
+    {
+      "teacher": "ONUR",
+      "room": "106",
+      "session_time": "15:30-17:50",
+      "student_count": 12,
+      "source_header": "P.TESİ-SALI-ÇARŞAMBA 15:30 – 17:50 SEANSI-SON DERS SAATI ( 17:10-17:50) ETKİNLİK.               "
+    },
+    {
+      "teacher": "HÜMEYRA",
+      "room": "107",
+      "session_time": "15:30-17:50",
+      "student_count": 12,
+      "source_header": "P.TESİ-SALI-ÇARŞAMBA 15:30 – 17:50 SEANSI-SON DERS SAATI ( 17:10-17:50) ETKİNLİK.               "
+    },
+    {
+      "teacher": "KIMIA",
+      "room": "105",
+      "session_time": "15:30-17:50",
+      "student_count": 12,
+      "source_header": "P.TESİ-SALI-ÇARŞAMBA 15:30 – 17:50 SEANSI-SON DERS SAATI ( 17:10-17:50) ETKİNLİK.               "
+    }
+  ],
+  "teachers": [
+    "HÜMEYRA",
+    "KIMIA",
+    "ONUR",
+    "SEVDE"
+  ],
+  "rooms": [
+    "105",
+    "106",
+    "107",
+    "108"
+  ],
+  "sessions": [
+    "13:00-15:20",
+    "15:30-17:50"
+  ],
+  "total_students": 84
+}

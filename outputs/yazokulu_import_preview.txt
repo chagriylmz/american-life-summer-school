@@ -1,0 +1,19 @@
+Yaz Okulu Import Preview
+
+Source sheet: YAZ OKULU-SINIF PLANLANMASI(TAS
+Visibility: visible
+Teachers: HÜMEYRA, KIMIA, ONUR, SEVDE
+Rooms: 105, 106, 107, 108
+Sessions: 13:00-15:20, 15:30-17:50
+Total students: 84
+
+Classes:
+Session 13:00-15:20
+  - HÜMEYRA | Room 107 | 12 students
+  - ONUR | Room 106 | 12 students
+  - SEVDE | Room 108 | 12 students
+Session 15:30-17:50
+  - HÜMEYRA | Room 107 | 12 students
+  - KIMIA | Room 105 | 12 students
+  - ONUR | Room 106 | 12 students
+  - SEVDE | Room 108 | 12 students

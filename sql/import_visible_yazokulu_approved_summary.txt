@@ -1,0 +1,15 @@
+Approved visible worksheet import
+Source sheet: YAZ OKULU-SINIF PLANLANMASI(TAS
+Hidden worksheets: ignored
+Teachers: 4
+Classes/sessions: 7
+Students: 84
+
+Classes:
+- 13:00-15:20 | Room 106 | ONUR | 12 students
+- 13:00-15:20 | Room 107 | HÜMEYRA | 12 students
+- 13:00-15:20 | Room 108 | SEVDE | 12 students
+- 15:30-17:50 | Room 105 | KIMIA | 12 students
+- 15:30-17:50 | Room 106 | ONUR | 12 students
+- 15:30-17:50 | Room 107 | HÜMEYRA | 12 students
+- 15:30-17:50 | Room 108 | SEVDE | 12 students

@@ -1,0 +1,14 @@
+Workbook: yazokulu.xlsx
+Worksheet: YAZ OKULU 1 TEMMUZ-1 AĞUSTOS 20
+Detected time blocks: 2
+Detected class/session groups: 6
+Detected unique students: 68
+Detected enrollments: 68
+
+Classes:
+- 13:00-15:20 | HEBA | Room 103 | source 14:00-16:20
+- 13:00-15:20 | RESUL | Room 105 | source 14:00-16:20
+- 13:00-15:20 | SAEIDE | Room 106 | source 14:00-16:20
+- 15:30-17:50 | HEBA | Room 103 | source 16:30-18:50
+- 15:30-17:50 | RESUL | Room 105 | source 16:30-18:50
+- 15:30-17:50 | SAEIDE | Room 106 | source 16:30-18:50

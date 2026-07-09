@@ -1,0 +1,322 @@
+[
+  {
+    "sheet_name": " 2024-2025 ŞUBAT  2.DÖNEM",
+    "visibility": "hidden",
+    "used_range": "A1:P143",
+    "max_row": 948,
+    "max_column": 25,
+    "detected_teacher_names": [
+      "2. DÖNEM",
+      "2025 TEENGLISH 2.DÖNEM CUMARTESİ-PAZAR GRUPLARI 11.30-13.50 / ÖĞLEN",
+      "2025 TEENGLISH 2.DÖNEM CUMARTESİ-PAZAR GRUPLARI 14.30-16.50 / ÖĞLEDEN SONRA",
+      "2025 TEENGLISH 2.DÖNEM CUMARTESİ-PAZAR GRUPLARI 9.00-11.20 / SABAH",
+      "2025 TEENGLISH 2.DÖNEM SALI-PERŞEMBE GRUPLARI 16.30-18.50",
+      "ESMA",
+      "ESRA",
+      "MAHİR"
+    ],
+    "detected_session_times": [
+      {
+        "row": 34,
+        "time": "16:30-18:50",
+        "text": " 2024-2025 TEENGLISH 2.DÖNEM SALI-PERŞEMBE GRUPLARI 16.30-18.50                       "
+      },
+      {
+        "row": 51,
+        "time": "09:00-11:20",
+        "text": " 2024-2025 TEENGLISH 2.DÖNEM CUMARTESİ-PAZAR GRUPLARI 9.00-11.20 / SABAH                       "
+      },
+      {
+        "row": 82,
+        "time": "11:30-13:50",
+        "text": " 2024-2025 TEENGLISH 2.DÖNEM CUMARTESİ-PAZAR GRUPLARI 11.30-13.50 / ÖĞLEN                       "
+      },
+      {
+        "row": 113,
+        "time": "14:30-16:50",
+        "text": " 2024-2025 TEENGLISH 2.DÖNEM CUMARTESİ-PAZAR GRUPLARI 14.30-16.50 / ÖĞLEDEN SONRA                       "
+      }
+    ]
+  },
+  {
+    "sheet_name": "2025-26 1.DÖNEM EKİM-SADECE EĞİ",
+    "visibility": "hidden",
+    "used_range": "A1:P177",
+    "max_row": 177,
+    "max_column": 16,
+    "detected_teacher_names": [
+      "S-P ISTIYOR."
+    ],
+    "detected_session_times": [
+      {
+        "row": 3,
+        "time": "16:30-18:50",
+        "text": "P.TESİ-ÇARŞAMBA GRUPLARI 16.30-18.50               "
+      },
+      {
+        "row": 35,
+        "time": "16:30-18:50",
+        "text": "SALI-PERŞEMBE GRUPLARI 16.30-18.50               "
+      },
+      {
+        "row": 52,
+        "time": "09:00-11:20",
+        "text": "2CUMARTESİ-PAZAR GRUPLARI 9.00-11.20 / SABAH               "
+      },
+      {
+        "row": 83,
+        "time": "11:30-13:50",
+        "text": "CUMARTESİ-PAZAR GRUPLARI 11.30-13.50 / ÖĞLEN               "
+      },
+      {
+        "row": 114,
+        "time": "14:30-16:50",
+        "text": "CUMARTESİ-PAZAR GRUPLARI 14.30-16.50 / ÖĞLEDEN SONRA               "
+      }
+    ]
+  },
+  {
+    "sheet_name": "2025-26 1.DÖNEM EKİM ",
+    "visibility": "hidden",
+    "used_range": "B1:M122",
+    "max_row": 995,
+    "max_column": 27,
+    "detected_teacher_names": [
+      "2026 1. DÖNEM"
+    ],
+    "detected_session_times": [
+      {
+        "row": 2,
+        "time": "16:30-18:50",
+        "text": " P.TESİ-ÇARŞAMBA GRUPLARI 16.30-18.50                         "
+      },
+      {
+        "row": 35,
+        "time": "16:30-18:50",
+        "text": " SALI-PERŞEMBE GRUPLARI 16.30-18.50                         "
+      },
+      {
+        "row": 53,
+        "time": "09:00-11:20",
+        "text": " CUMARTESİ-PAZAR GRUPLARI 9.00-11.20 / SABAH                         "
+      },
+      {
+        "row": 72,
+        "time": "11:30-13:50",
+        "text": " CUMARTESİ-PAZAR GRUPLARI 11.30-13.50 / ÖĞLEN                         "
+      },
+      {
+        "row": 107,
+        "time": "14:30-16:50",
+        "text": " CUMARTESİ-PAZAR GRUPLARI 14.30-16.50 / ÖĞLEDEN SONRA                         "
+      }
+    ]
+  },
+  {
+    "sheet_name": "TEEN TELAFİ DERSLERİ-19-29 OCAK",
+    "visibility": "hidden",
+    "used_range": "A1:H20",
+    "max_row": 20,
+    "max_column": 9,
+    "detected_teacher_names": [],
+    "detected_session_times": [
+      {
+        "row": 3,
+        "time": "13:00-15:20",
+        "text": " 108 13.00-15.20   107 13.00-15.20  "
+      }
+    ]
+  },
+  {
+    "sheet_name": "YAZ OKULU-SINIF PLANLANMASI(TAS",
+    "visibility": "visible",
+    "used_range": "A1:P36",
+    "max_row": 48,
+    "max_column": 16,
+    "detected_teacher_names": [
+      "HÜMEYRA",
+      "KIMIA",
+      "ONUR",
+      "SEVDE"
+    ],
+    "detected_session_times": [
+      {
+        "row": 2,
+        "time": "13:00-15:20",
+        "text": "P.TESİ-SALI-ÇARŞAMBA 13:00 – 15:20 SEANSI -SON DERS SAATI ( 14:40-15:20) ETKİNLİK.               "
+      },
+      {
+        "row": 20,
+        "time": "15:30-17:50",
+        "text": "P.TESİ-SALI-ÇARŞAMBA 15:30 – 17:50 SEANSI-SON DERS SAATI ( 17:10-17:50) ETKİNLİK.               "
+      }
+    ]
+  },
+  {
+    "sheet_name": "ÜCRETSİZ DERS PLANLAMASI",
+    "visibility": "hidden",
+    "used_range": "A1:G42",
+    "max_row": 42,
+    "max_column": 14,
+    "detected_teacher_names": [],
+    "detected_session_times": [
+      {
+        "row": 2,
+        "time": "13:30-15:50",
+        "text": "PAZARTESİ-ÇARŞAMBA /13.30-15.50             "
+      },
+      {
+        "row": 20,
+        "time": "16:00-18:20",
+        "text": "PAZARTESİ-ÇARŞAMBA/16.00-18.20             "
+      }
+    ]
+  },
+  {
+    "sheet_name": "2. TERM",
+    "visibility": "hidden",
+    "used_range": "B2:M164",
+    "max_row": 1006,
+    "max_column": 16,
+    "detected_teacher_names": [
+      "2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 9.00-11.20 / SABAH",
+      "2024 TEENGLISH 1.DÖNEM SALI-PERŞEMBE GRUPLARI 16.30-18.50",
+      "2024 TEENGLISH 2.DÖNEM CUMARTESİ-PAZAR GRUPLARI 11.30-13.50 / ÖĞLEN",
+      "2024 TEENGLISH 2.DÖNEM CUMARTESİ-PAZAR GRUPLARI 14.30-16.50 / ÖĞLEDEN SONRA",
+      "2024 TEENGLISH 2.DÖNEM PAZARTESİ-ÇARŞAMBA GRUPLARI 16.30-18.50"
+    ],
+    "detected_session_times": [
+      {
+        "row": 2,
+        "time": "16:30-18:50",
+        "text": " 2023-2024 TEENGLISH 2.DÖNEM PAZARTESİ-ÇARŞAMBA GRUPLARI 16.30-18.50              "
+      },
+      {
+        "row": 34,
+        "time": "16:30-18:50",
+        "text": " 2023-2024 TEENGLISH 1.DÖNEM SALI-PERŞEMBE GRUPLARI 16.30-18.50              "
+      },
+      {
+        "row": 52,
+        "time": "09:00-11:20",
+        "text": " 2023-2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 9.00-11.20 / SABAH              "
+      },
+      {
+        "row": 85,
+        "time": "11:30-13:50",
+        "text": " 2023-2024 TEENGLISH 2.DÖNEM CUMARTESİ-PAZAR GRUPLARI 11.30-13.50 / ÖĞLEN              "
+      },
+      {
+        "row": 135,
+        "time": "14:30-16:50",
+        "text": " 2023-2024 TEENGLISH 2.DÖNEM CUMARTESİ-PAZAR GRUPLARI 14.30-16.50 / ÖĞLEDEN SONRA              "
+      }
+    ]
+  },
+  {
+    "sheet_name": "1. TERM",
+    "visibility": "hidden",
+    "used_range": "A1:L158",
+    "max_row": 158,
+    "max_column": 12,
+    "detected_teacher_names": [
+      "2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 11.30-13.50 / ÖĞLEN",
+      "2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 14.30-16.50 / ÖĞLEDEN SONRA",
+      "2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 9.00-11.20 / SABAH",
+      "2024 TEENGLISH 1.DÖNEM PAZARTESİ-ÇARŞAMBA GRUPLARI 16.30-18.50",
+      "2024 TEENGLISH 1.DÖNEM SALI-PERŞEMBE GRUPLARI 16.30-18.50"
+    ],
+    "detected_session_times": [
+      {
+        "row": 2,
+        "time": "16:30-18:50",
+        "text": " 2023-2024 TEENGLISH 1.DÖNEM PAZARTESİ-ÇARŞAMBA GRUPLARI 16.30-18.50          "
+      },
+      {
+        "row": 36,
+        "time": "16:30-18:50",
+        "text": " 2023-2024 TEENGLISH 1.DÖNEM SALI-PERŞEMBE GRUPLARI 16.30-18.50          "
+      },
+      {
+        "row": 54,
+        "time": "09:00-11:20",
+        "text": " 2023-2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 9.00-11.20 / SABAH          "
+      },
+      {
+        "row": 87,
+        "time": "11:30-13:50",
+        "text": " 2023-2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 11.30-13.50 / ÖĞLEN          "
+      },
+      {
+        "row": 121,
+        "time": "14:30-16:50",
+        "text": " 2023-2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 14.30-16.50 / ÖĞLEDEN SONRA          "
+      }
+    ]
+  },
+  {
+    "sheet_name": "TEENGLISH.COM",
+    "visibility": "hidden",
+    "used_range": "A2:K158",
+    "max_row": 1000,
+    "max_column": 11,
+    "detected_teacher_names": [
+      "2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 11.30-13.50 / ÖĞLEN",
+      "2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 14.30-16.50 / ÖĞLEDEN SONRA",
+      "2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 9.00-11.20 / SABAH",
+      "2024 TEENGLISH 1.DÖNEM PAZARTESİ-ÇARŞAMBA GRUPLARI 16.30-18.50",
+      "2024 TEENGLISH 1.DÖNEM SALI-PERŞEMBE GRUPLARI 16.30-18.50"
+    ],
+    "detected_session_times": [
+      {
+        "row": 2,
+        "time": "16:30-18:50",
+        "text": "2023-2024 TEENGLISH 1.DÖNEM PAZARTESİ-ÇARŞAMBA GRUPLARI 16.30-18.50          "
+      },
+      {
+        "row": 36,
+        "time": "16:30-18:50",
+        "text": "2023-2024 TEENGLISH 1.DÖNEM SALI-PERŞEMBE GRUPLARI 16.30-18.50          "
+      },
+      {
+        "row": 54,
+        "time": "09:00-11:20",
+        "text": "2023-2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 9.00-11.20 / SABAH          "
+      },
+      {
+        "row": 87,
+        "time": "11:30-13:50",
+        "text": "2023-2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 11.30-13.50 / ÖĞLEN          "
+      },
+      {
+        "row": 121,
+        "time": "14:30-16:50",
+        "text": "2023-2024 TEENGLISH 1.DÖNEM CUMARTESİ-PAZAR GRUPLARI 14.30-16.50 / ÖĞLEDEN SONRA          "
+      }
+    ]
+  },
+  {
+    "sheet_name": "YAZ OKULU 1 TEMMUZ-1 AĞUSTOS 20",
+    "visibility": "hidden",
+    "used_range": "A1:P38",
+    "max_row": 998,
+    "max_column": 23,
+    "detected_teacher_names": [
+      "HEBA",
+      "RESUL",
+      "SAEIDE"
+    ],
+    "detected_session_times": [
+      {
+        "row": 2,
+        "time": "14:00-16:20",
+        "text": "P.TESİ-SALI-ÇARŞAMBA-PERŞEMBE 14:00-16:20                      "
+      },
+      {
+        "row": 19,
+        "time": "16:30-18:50",
+        "text": "P.TESİ-SALI-ÇARŞAMBA-PERŞEMBE 16:30-18:50                      "
+      }
+    ]
+  }
+]
