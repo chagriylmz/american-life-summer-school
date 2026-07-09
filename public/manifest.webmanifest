@@ -1,14 +1,14 @@
 {
-  "name": "American Life Summer School",
+  "name": "American Life Language Institute Sancaktepe Branch",
   "short_name": "American Life",
-  "description": "Summer school session, attendance, notes, and coordinator tracking.",
+  "description": "American Life Sancaktepe Campus Portal.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "theme_color": "#176b62",
-  "background_color": "#f5f7f2",
+  "theme_color": "#123B63",
+  "background_color": "#F4F6FA",
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -21,18 +21,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-192.svg",
-      "sizes": "192x192",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "/icons/icon-512.svg",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any"
     }
   ]
 }
