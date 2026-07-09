@@ -13,6 +13,11 @@ type ActivityActionType =
   | "session_finished"
   | "late_entry_updated";
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
 type UserProfile = {
   id: string;
   email: string;
@@ -140,6 +145,7 @@ function App() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
   const isCoordinator = useMemo(
     () => profile?.role === "admin" || profile?.role === "staff",
@@ -203,6 +209,25 @@ function App() {
       document.removeEventListener("visibilitychange", recoverWhenVisible);
     };
   }, [profile?.role, session?.user.id]);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+
+    const handleAppInstalled = () => {
+      setInstallPrompt(null);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, []);
 
   async function loadSignedInUser(userId: string) {
     setProfileLoading(true);
@@ -832,6 +857,13 @@ function App() {
     setActionLoading(false);
   }
 
+  async function handleInstallApp() {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    await installPrompt.userChoice;
+    setInstallPrompt(null);
+  }
+
   if (loading || profileLoading) {
     return <main className="shell">Loading...</main>;
   }
@@ -881,9 +913,16 @@ function App() {
           <h1>American Life Summer School</h1>
           <p className="user-name">{profile.full_name}</p>
         </div>
-        <button type="button" className="secondary" onClick={handleSignOut} disabled={actionLoading}>
-          Sign out
-        </button>
+        <div className="topbar-actions">
+          {installPrompt && (
+            <button type="button" onClick={handleInstallApp}>
+              Install App
+            </button>
+          )}
+          <button type="button" className="secondary" onClick={handleSignOut} disabled={actionLoading}>
+            Sign out
+          </button>
+        </div>
       </header>
 
       {error && <p className="error">{error}</p>}

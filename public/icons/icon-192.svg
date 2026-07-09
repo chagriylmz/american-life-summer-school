@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" role="img" aria-labelledby="title">
+  <title>American Life Summer School</title>
+  <rect width="192" height="192" rx="42" fill="#176b62"/>
+  <circle cx="144" cy="48" r="24" fill="#f4c25f"/>
+  <path d="M42 122c18-32 42-48 72-48 17 0 30 5 40 14v42c-10-12-23-18-40-18-27 0-50 13-68 38l-4-28Z" fill="#f5f7f2"/>
+  <path d="M46 58h54c18 0 32 14 32 32v44H78c-18 0-32-14-32-32V58Z" fill="#ffffff" opacity="0.92"/>
+  <path d="M68 84h42M68 106h28" stroke="#176b62" stroke-width="10" stroke-linecap="round"/>
+  <text x="96" y="165" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#ffffff">AL</text>
+</svg>

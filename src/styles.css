@@ -139,6 +139,13 @@ textarea:focus {
   margin-bottom: 28px;
 }
 
+.topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .secondary {
   color: #176b62;
   border: 1px solid #b8cec8;
@@ -672,6 +679,10 @@ textarea:focus {
 
   .search-field {
     width: 100%;
+  }
+
+  .topbar-actions {
+    justify-content: flex-start;
   }
 
   .teacher-layout {
