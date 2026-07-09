@@ -337,6 +337,7 @@ textarea:focus {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
 }
 
 .status-badge {
@@ -429,10 +430,10 @@ textarea:focus {
   height: 48px;
   flex: 0 0 48px;
   place-items: center;
-  border: 1px solid #cfd8d1;
+  border: 1px solid #9bc7ad;
   border-radius: 50%;
   color: #ffffff;
-  background: #263f4d;
+  background: #176b62;
   font-weight: 800;
 }
 
@@ -441,10 +442,28 @@ textarea:focus {
 }
 
 .session-info-block {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  align-items: center;
   border: 1px solid #e2e7de;
   border-radius: 8px;
   padding: 11px 12px;
   background: #fbfcfa;
+}
+
+.session-info-block .eyebrow {
+  grid-column: 2;
+}
+
+.session-info-block strong {
+  grid-column: 2;
+}
+
+.session-info-icon {
+  grid-row: 1 / span 2;
+  color: #176b62;
+  font-size: 1rem;
 }
 
 .session-card-actions {
@@ -693,6 +712,66 @@ textarea:focus {
   .session-details-grid,
   .activity-feed-row {
     grid-template-columns: 1fr;
+  }
+
+  .session-card-grid {
+    gap: 10px;
+  }
+
+  .session-tracker-row {
+    padding: 12px;
+  }
+
+  .session-tracker-main {
+    gap: 10px;
+  }
+
+  .teacher-identity {
+    gap: 10px;
+  }
+
+  .teacher-avatar {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+    font-size: 0.9rem;
+  }
+
+  .session-teacher strong {
+    font-size: 1rem;
+  }
+
+  .session-info-block {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    padding: 0;
+    background: transparent;
+  }
+
+  .session-info-block .eyebrow {
+    display: none;
+  }
+
+  .session-info-block strong {
+    margin: 0;
+    color: #4d5a54;
+    font-size: 0.95rem;
+  }
+
+  .status-badges {
+    gap: 6px;
+  }
+
+  .status-badge {
+    padding: 5px 8px;
+    font-size: 0.78rem;
+  }
+
+  .session-card-actions .secondary {
+    min-height: 38px;
+    padding: 0 12px;
   }
 
   .class-meta {

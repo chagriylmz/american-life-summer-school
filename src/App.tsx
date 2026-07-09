@@ -1183,10 +1183,12 @@ function CoordinatorSessionRow({
           </div>
         </div>
         <div className="session-info-block">
+          <span className="session-info-icon" aria-hidden="true">🕐</span>
           <span className="eyebrow">Time</span>
-          <strong>{formatTime(item.startsAt)}-{formatTime(item.endsAt)}</strong>
+          <strong>{formatTime(item.startsAt)}–{formatTime(item.endsAt)}</strong>
         </div>
         <div className="session-info-block">
+          <span className="session-info-icon" aria-hidden="true">📍</span>
           <span className="eyebrow">Room</span>
           <strong>{item.location ?? "Room not set"}</strong>
         </div>
@@ -1202,7 +1204,7 @@ function CoordinatorSessionRow({
         </div>
         <div className="session-card-actions">
           <button className="secondary" type="button" onClick={() => setExpanded((value) => !value)}>
-            {expanded ? "Hide details" : "View details"}
+            {expanded ? "▲ Hide details" : "▼ View details"}
           </button>
         </div>
       </div>
