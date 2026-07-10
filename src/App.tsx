@@ -949,8 +949,9 @@ function App() {
         </div>
         <div className="topbar-actions">
           {installPrompt && (
-            <button type="button" onClick={handleInstallApp}>
-              Install App
+            <button type="button" className="install-button" onClick={handleInstallApp} aria-label="Install app">
+              <span aria-hidden="true">+</span>
+              Install
             </button>
           )}
           <button type="button" className="secondary" onClick={handleSignOut} disabled={actionLoading}>
@@ -971,6 +972,7 @@ function App() {
           onMarkAttendance={markAttendance}
           onSaveNote={saveLessonNote}
           onFinishSession={finishSession}
+          profile={profile}
         />
       )}
       {profile.role === "teacher" && (
@@ -993,6 +995,11 @@ function App() {
           <p>This campus portal module is currently enabled for coordinators, admins, and teachers.</p>
         </section>
       )}
+      <footer className="app-footer">
+        <strong>American Life Language Institute</strong>
+        <span>Sancaktepe Branch</span>
+        <span>Campus Portal · v1.1</span>
+      </footer>
     </main>
   );
 }
@@ -1006,6 +1013,7 @@ function CoordinatorDashboard({
   onMarkAttendance,
   onSaveNote,
   onFinishSession,
+  profile,
 }: {
   stats: CoordinatorStats | null;
   teachers: Teacher[];
@@ -1015,6 +1023,7 @@ function CoordinatorDashboard({
   onMarkAttendance: (item: SummerSession, studentId: string, status: AttendanceStatus) => void;
   onSaveNote: (item: SummerSession, body: string) => void;
   onFinishSession: (item: SummerSession) => void;
+  profile: UserProfile;
 }) {
   const [sessionSearch, setSessionSearch] = useState("");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("today");
@@ -1050,23 +1059,21 @@ function CoordinatorDashboard({
   const notesSubmitted = todaySessions.filter((item) => item.note.trim().length > 0).length;
   const alerts = getCoordinatorAlerts(todaySessions);
   const historySessions = getHistorySessions(sessions, historyFilter);
+  const firstName = getFirstName(profile.full_name);
 
   return (
     <section className="dashboard coordinator-dashboard">
-      <div className="coordinator-hero">
-        <div className="hero-brand-copy">
-          <img src="/logo.jpg" alt="American Life Language Institute" />
-          <div>
-            <span className="eyebrow">Summer School Module</span>
-            <h2>Coordinator Dashboard</h2>
-            <p>Operations control panel for live sessions, teacher coverage, attendance, notes, alerts, and activity.</p>
-          </div>
+      <section className="coordinator-greeting">
+        <div>
+          <span className="eyebrow">Coordinator Dashboard</span>
+          <h2>{getGreeting()}, {firstName}</h2>
+          <p>{formatDate(today)} · Summer School Module operations</p>
         </div>
-        <div className="coordinator-hero-meta">
-          <span>{formatDate(today)}</span>
-          <strong>{todaySessions.length} sessions today</strong>
+        <div className="coordinator-greeting-meta">
+          <strong>{todaySessions.length}</strong>
+          <span>sessions today</span>
         </div>
-      </div>
+      </section>
 
       <section className="session-group">
         <div className="section-heading compact">
@@ -1074,14 +1081,17 @@ function CoordinatorDashboard({
           <p>Summer School Module operational snapshot</p>
         </div>
         <div className="stats-grid overview-grid operations-overview-grid">
-          <StatCard label="Sessions Today" value={stats?.todaySessionCount ?? 0} />
-          <StatCard label="Active Sessions" value={activeSessions.length} />
-          <StatCard label="Completed Sessions" value={completedSessions.length} />
-          <StatCard label="Upcoming / Not Started" value={upcomingSessions.length} />
-          <StatCard label="Attendance Rate" value={getAttendanceRateLabel(todaySessions)} />
-          <StatCard label="Lesson Notes Submitted" value={`${notesSubmitted} / ${todaySessions.length}`} />
-          <StatCard label="Alerts" value={alerts.length} />
+          <StatCard icon="Cal" label="Sessions Today" value={stats?.todaySessionCount ?? 0} />
+          <StatCard icon="Live" label="Active Sessions" value={activeSessions.length} />
+          <StatCard icon="Done" label="Completed Sessions" value={completedSessions.length} />
+          <StatCard icon="Next" label="Upcoming / Not Started" value={upcomingSessions.length} />
+          <StatCard icon="%" label="Attendance Rate" value={getAttendanceRateLabel(todaySessions)} />
+          <StatCard icon="Note" label="Lesson Notes Submitted" value={`${notesSubmitted} / ${todaySessions.length}`} />
+          <StatCard icon="!" label="Alerts" value={alerts.length} />
         </div>
+      </section>
+
+      <section className="session-group">
         <div className="alerts-panel">
           <div>
             <h4>Alerts</h4>
@@ -1141,28 +1151,6 @@ function CoordinatorDashboard({
         )}
       </section>
 
-      <div className="panel management-panel">
-        <div>
-          <h3>Teacher login linking</h3>
-          <p>
-            Teachers without a linked Auth account cannot log in yet. Create each teacher in Supabase
-            Authentication, then run the linking SQL in <strong>sql/link_teacher_auth_users.sql</strong>.
-          </p>
-        </div>
-        <div className="teacher-grid">
-          <span className="status-pill success">Linked logins: {linkedTeachers.length} / {teachers.length}</span>
-          <span className="status-pill success">Total students: {stats?.studentCount ?? 0}</span>
-          <span className="status-pill warning">
-            Attendance pending: {stats?.attendancePendingCount ?? 0}
-          </span>
-          {teachers.map((item) => (
-            <span className={item.user_id ? "status-pill success" : "status-pill warning"} key={item.id}>
-              {item.display_name}: {item.user_id ? "linked" : "missing login"}
-            </span>
-          ))}
-        </div>
-      </div>
-
       <section className="session-group">
         <div className="live-session-toolbar">
           <div className="section-heading compact">
@@ -1218,11 +1206,40 @@ function CoordinatorDashboard({
 
       <ActivityFeed logs={activityLogs} sessionById={sessionById} teacherById={teacherById} />
 
-      <div className="stats-grid support-stats">
-        <StatCard label="Teacher Logins Linked" value={`${linkedTeachers.length} / ${teachers.length}`} />
-        <StatCard label="Notes completed" value={stats?.notesCompletedCount ?? 0} />
-        <StatCard label="Total students" value={stats?.studentCount ?? 0} />
-      </div>
+      <details className="panel management-panel administration-panel">
+        <summary>
+          <div>
+            <h3>Administration</h3>
+            <p>Teacher login linking and account status</p>
+          </div>
+          <div className="admin-summary">
+            <span>Linked {linkedTeachers.length} / {teachers.length}</span>
+            <span>{teachers.length} teachers</span>
+            <span>{stats?.studentCount ?? 0} students</span>
+          </div>
+        </summary>
+        <div className="administration-body">
+          <div>
+            <h4>Teacher Login Linking</h4>
+            <p>
+              Teachers without a linked Auth account cannot log in yet. Create each teacher in Supabase
+              Authentication, then run the linking SQL in <strong>sql/link_teacher_auth_users.sql</strong>.
+            </p>
+          </div>
+          <div className="teacher-grid">
+            <span className="status-pill success">Linked logins: {linkedTeachers.length} / {teachers.length}</span>
+            <span className="status-pill success">Total students: {stats?.studentCount ?? 0}</span>
+            <span className="status-pill warning">
+              Attendance pending: {stats?.attendancePendingCount ?? 0}
+            </span>
+            {teachers.map((item) => (
+              <span className={item.user_id ? "status-pill success" : "status-pill warning"} key={item.id}>
+                {item.display_name}: {item.user_id ? "linked" : "missing login"}
+              </span>
+            ))}
+          </div>
+        </div>
+      </details>
     </section>
   );
 }
@@ -1726,13 +1743,27 @@ function SessionStatusBadges({ item }: { item: SummerSession }) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: number | string }) {
+function StatCard({ label, value, icon }: { label: string; value: number | string; icon?: string }) {
   return (
     <article className="stat-card">
-      <span>{label}</span>
+      <span className="stat-card-label">
+        {icon && <span className="stat-icon" aria-hidden="true">{icon}</span>}
+        {label}
+      </span>
       <strong>{value}</strong>
     </article>
   );
+}
+
+function getFirstName(fullName: string) {
+  return fullName.trim().split(/\s+/)[0] || "Coordinator";
+}
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
 }
 
 function getInitials(name: string) {

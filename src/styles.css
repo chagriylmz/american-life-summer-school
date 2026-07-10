@@ -203,7 +203,7 @@ textarea:focus {
 .shell {
   width: min(1180px, calc(100% - 32px));
   margin: 0 auto;
-  padding: 34px 0 46px;
+  padding: 22px 0 34px;
 }
 
 .topbar {
@@ -211,24 +211,24 @@ textarea:focus {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 32px;
+  margin-bottom: 18px;
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 16px 18px;
+  border-radius: 14px;
+  padding: 12px 14px;
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: var(--shadow);
+  box-shadow: 0 10px 30px rgba(12, 36, 65, 0.07);
 }
 
 .app-brand img {
-  width: 70px;
-  height: 70px;
-  border-radius: 17px;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
   box-shadow: 0 10px 26px rgba(12, 36, 65, 0.12);
 }
 
 .app-brand h1 {
   color: var(--navy);
-  font-size: clamp(1.35rem, 3vw, 2rem);
+  font-size: clamp(1.08rem, 2.3vw, 1.45rem);
   letter-spacing: 0;
 }
 
@@ -251,13 +251,68 @@ textarea:focus {
   background: var(--navy);
 }
 
+.install-button {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+}
+
+.install-button span {
+  display: inline-block;
+  margin-right: 6px;
+  font-weight: 900;
+}
+
 .dashboard {
   display: grid;
   gap: 18px;
 }
 
 .coordinator-dashboard {
-  gap: 26px;
+  gap: 20px;
+}
+
+.coordinator-greeting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: end;
+  padding: 10px 2px 4px;
+}
+
+.coordinator-greeting h2 {
+  margin: 0;
+  color: var(--navy);
+  font-size: clamp(1.65rem, 4vw, 2.35rem);
+  line-height: 1.05;
+}
+
+.coordinator-greeting p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.coordinator-greeting-meta {
+  display: grid;
+  min-width: 132px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  text-align: right;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(12, 36, 65, 0.06);
+}
+
+.coordinator-greeting-meta strong {
+  color: var(--navy);
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.coordinator-greeting-meta span {
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .coordinator-hero {
@@ -368,6 +423,27 @@ textarea:focus {
 .stat-card span {
   color: var(--muted);
   font-weight: 800;
+}
+
+.stat-card-label {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  align-items: center;
+}
+
+.stat-icon {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border: 1px solid rgba(18, 59, 99, 0.12);
+  border-radius: 9px;
+  color: var(--navy);
+  background: #f2f6fb;
+  font-size: 0.72rem;
+  font-weight: 900;
 }
 
 .stat-card strong {
@@ -766,18 +842,32 @@ textarea:focus {
 }
 
 .activity-feed {
+  position: relative;
   display: grid;
-  gap: 8px;
+  gap: 0;
+  padding-left: 20px;
+}
+
+.activity-feed::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 20px;
+  width: 1px;
+  background: var(--border);
 }
 
 .activity-feed-row {
+  position: relative;
   display: grid;
   grid-template-columns: auto minmax(180px, 1.2fr) minmax(130px, 0.9fr) minmax(180px, 1.2fr);
   gap: 12px;
   align-items: center;
-  border: 1px solid var(--border);
-  border-radius: 13px;
-  padding: 14px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 13px 0 13px 22px;
   background: #ffffff;
 }
 
@@ -792,6 +882,77 @@ textarea:focus {
 
 .activity-feed-row div span {
   font-weight: 750;
+}
+
+.administration-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.administration-panel summary {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.administration-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.administration-panel summary h3,
+.administration-panel summary p,
+.administration-body h4,
+.administration-body p {
+  margin: 0;
+}
+
+.administration-panel summary p,
+.administration-body p {
+  margin-top: 5px;
+  color: var(--muted);
+}
+
+.admin-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.admin-summary span {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: var(--navy);
+  background: #f8fbff;
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
+.administration-body {
+  display: grid;
+  gap: 16px;
+  border-top: 1px solid var(--border);
+  padding: 18px 20px 20px;
+}
+
+.app-footer {
+  display: grid;
+  gap: 3px;
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.app-footer strong {
+  color: var(--navy);
 }
 
 .late-entry-panel {
@@ -953,13 +1114,31 @@ textarea:focus {
   .topbar,
   .class-card,
   .live-session-toolbar,
+  .coordinator-greeting,
   .coordinator-hero {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .topbar {
+    gap: 14px;
+    margin-bottom: 16px;
+    padding: 12px;
+  }
+
   .coordinator-hero {
     grid-template-columns: 1fr;
+  }
+
+  .coordinator-greeting {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding-top: 2px;
+  }
+
+  .coordinator-greeting-meta {
+    min-width: 0;
+    text-align: left;
   }
 
   .auth-brand,
@@ -1013,6 +1192,10 @@ textarea:focus {
 
   .topbar-actions {
     justify-content: flex-start;
+  }
+
+  .install-button {
+    min-height: 40px;
   }
 
   .teacher-layout {
@@ -1095,6 +1278,20 @@ textarea:focus {
 
   .activity-feed-row > span:nth-last-child(-n + 2) {
     grid-column: 2;
+  }
+
+  .administration-panel summary {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .admin-summary {
+    justify-content: flex-start;
+  }
+
+  .administration-body {
+    padding: 16px;
   }
 
   .late-entry-panel {
