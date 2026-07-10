@@ -1,0 +1,9 @@
+{
+  "source_workbook": "C:\\Users\\American Life S.tepe\\Documents\\Codex\\2026-07-09\\can-you-see-or-access-my\\yazokulu.xlsx",
+  "target_sql": "C:\\Users\\American Life S.tepe\\Documents\\Codex\\2026-07-09\\can-you-see-or-access-my\\sql\\update_parent_phones_from_yazokulu.sql",
+  "total_students_processed": 84,
+  "phones_update_candidates": 84,
+  "blank_numbers_skipped": 0,
+  "students_not_found_before_sql": 0,
+  "target_column": "public.students.guardian_phone"
+}
