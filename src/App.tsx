@@ -787,6 +787,7 @@ function App() {
     const student = item.students.find((candidate) => candidate.id === studentId);
     const guardianPhone = student?.guardianPhone?.trim();
     if (!student || !guardianPhone) return;
+    if (await hasNotificationToday(student.id)) return;
 
     const message =
       notificationType === "late"
@@ -817,6 +818,29 @@ function App() {
         notificationType,
       });
     }
+  }
+
+  async function hasNotificationToday(studentId: string) {
+    const { startIso, endIso } = getTurkeyTodayUtcRange();
+    const { data, error: notificationCheckError } = await supabase
+      .from("notification_logs")
+      .select("id")
+      .eq("student_id", studentId)
+      .gte("created_at", startIso)
+      .lt("created_at", endIso)
+      .limit(1);
+
+    if (notificationCheckError) {
+      console.error("[Notification log] Could not check daily notification limit", {
+        error: notificationCheckError,
+        studentId,
+        startIso,
+        endIso,
+      });
+      return false;
+    }
+
+    return (data?.length ?? 0) > 0;
   }
 
   async function saveLessonNote(item: SummerSession, body: string) {
@@ -2086,6 +2110,23 @@ function getTodayDate() {
   const now = new Date();
   const timezoneOffset = now.getTimezoneOffset() * 60000;
   return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 10);
+}
+
+function getTurkeyTodayUtcRange() {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Istanbul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const turkeyDate = formatter.format(new Date());
+  const startUtc = new Date(`${turkeyDate}T00:00:00+03:00`);
+  const endUtc = new Date(startUtc.getTime() + 24 * 60 * 60 * 1000);
+
+  return {
+    startIso: startUtc.toISOString(),
+    endIso: endUtc.toISOString(),
+  };
 }
 
 function formatDate(value: string) {
