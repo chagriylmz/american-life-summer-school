@@ -5,6 +5,7 @@ import { supabase } from "./lib/supabaseClient";
 
 type UserRole = "admin" | "staff" | "teacher" | "student";
 type AttendanceStatus = "present" | "late" | "absent" | "excused";
+type ParentNotificationType = "late" | "absent";
 type LessonStatus = "scheduled" | "completed" | "cancelled";
 type ActivityActionType =
   | "session_started"
@@ -64,6 +65,7 @@ type StudentRow = {
   full_name: string;
   student_code: string | null;
   phone: string | null;
+  guardian_phone: string | null;
   date_of_birth: string | null;
 };
 
@@ -91,6 +93,7 @@ type SessionStudent = {
   fullName: string;
   studentCode: string | null;
   phone: string | null;
+  guardianPhone: string | null;
   birthYear: string | null;
   attendanceStatus: AttendanceStatus | null;
 };
@@ -420,7 +423,7 @@ function App() {
     const studentsResult = studentIds.length
       ? await supabase
           .from("students")
-          .select("id, full_name, student_code, phone, date_of_birth")
+          .select("id, full_name, student_code, phone, guardian_phone, date_of_birth")
           .in("id", studentIds)
       : { data: [] as StudentRow[], error: null };
 
@@ -472,6 +475,7 @@ function App() {
         fullName: typedStudent.full_name,
         studentCode: typedStudent.student_code,
         phone: typedStudent.phone,
+        guardianPhone: typedStudent.guardian_phone,
         birthYear: typedStudent.date_of_birth?.slice(0, 4) ?? null,
         attendanceStatus: null,
       });
@@ -736,21 +740,26 @@ function App() {
     }
     setActionLoading(true);
     setError(null);
-    const { error: attendanceError } = await supabase.from("attendance").upsert(
-      {
-        lesson_id: item.id,
-        class_id: item.classId,
-        student_id: studentId,
-        status,
-        recorded_by: profile.id,
-        recorded_at: new Date().toISOString(),
-      },
-      { onConflict: "lesson_id,student_id" },
-    );
+    const { data: savedAttendance, error: attendanceError } = await supabase
+      .from("attendance")
+      .upsert(
+        {
+          lesson_id: item.id,
+          class_id: item.classId,
+          student_id: studentId,
+          status,
+          recorded_by: profile.id,
+          recorded_at: new Date().toISOString(),
+        },
+        { onConflict: "lesson_id,student_id" },
+      )
+      .select("id, lesson_id, class_id, student_id, status")
+      .single();
     if (attendanceError) {
       console.error("[Attendance] Could not save attendance", attendanceError);
       setError(getFriendlySupabaseSaveError(attendanceError, "attendance"));
     } else {
+      await queueParentNotificationLog(item, studentId, savedAttendance?.id ?? null, status);
       await logActivity("attendance_updated", item, { student_id: studentId, status });
       if (isCoordinator && canUseLateEntry(item)) {
         await logActivity("late_entry_updated", item, {
@@ -763,6 +772,51 @@ function App() {
     await refreshCurrentRoleData();
     setSelectedSessionId(item.id);
     setActionLoading(false);
+  }
+
+  async function queueParentNotificationLog(
+    item: SummerSession,
+    studentId: string,
+    attendanceId: string | null,
+    attendanceStatus: AttendanceStatus,
+  ) {
+    if (attendanceStatus !== "late" && attendanceStatus !== "absent") return;
+    if (!attendanceId) return;
+
+    const notificationType = attendanceStatus as ParentNotificationType;
+    const student = item.students.find((candidate) => candidate.id === studentId);
+    const guardianPhone = student?.guardianPhone?.trim();
+    if (!student || !guardianPhone) return;
+
+    const message =
+      notificationType === "late"
+        ? `Sayın Velimiz, öğrenciniz ${student.fullName} bugün derse geç katılmıştır. Bilginize.`
+        : `Sayın Velimiz, öğrenciniz ${student.fullName} bugün derse katılmamıştır. Bilginize.`;
+
+    const { error: notificationError } = await supabase.from("notification_logs").upsert(
+      {
+        student_id: student.id,
+        attendance_id: attendanceId,
+        notification_type: notificationType,
+        phone: guardianPhone,
+        message,
+        status: "pending",
+      },
+      {
+        onConflict: "student_id,attendance_id,notification_type",
+        ignoreDuplicates: true,
+      },
+    );
+
+    if (notificationError) {
+      console.error("[Notification log] Could not queue parent notification", {
+        error: notificationError,
+        lessonId: item.id,
+        attendanceId,
+        studentId,
+        notificationType,
+      });
+    }
   }
 
   async function saveLessonNote(item: SummerSession, body: string) {
