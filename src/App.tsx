@@ -2242,6 +2242,10 @@ function RetroactiveAttendancePanel({
   const summary = getRetroDraftSummary(drafts, selectedLesson?.students ?? []);
   const hasSelectedRequiredFields = Boolean(selectedClassId && selectedLessonId && selectedLesson);
   const canSave = hasSelectedRequiredFields && summary.recorded > 0 && !actionLoading;
+  const selectedLessonDateLabel = selectedLesson ? formatLessonDateWithWeekday(selectedLesson.lessonDate) : "";
+  const selectedLessonTimeLabel = selectedLesson
+    ? `${formatTime(selectedLesson.startsAt)}-${formatTime(selectedLesson.endsAt)}`
+    : "";
 
   useEffect(() => {
     setSelectedLessonId("");
@@ -2324,7 +2328,7 @@ function RetroactiveAttendancePanel({
       <form className="retro-attendance-form" onSubmit={handleSave}>
         <div className="retro-selector-grid">
           <label>
-            Class / session
+            Select class/session
             <select
               value={selectedClassId}
               onChange={(event) => setSelectedClassId(event.target.value)}
@@ -2339,7 +2343,7 @@ function RetroactiveAttendancePanel({
             </select>
           </label>
           <label>
-            Past lesson date
+            Select lesson date
             <select
               value={selectedLessonId}
               onChange={(event) => setSelectedLessonId(event.target.value)}
@@ -2349,55 +2353,68 @@ function RetroactiveAttendancePanel({
               <option value="">Choose past lesson</option>
               {lessonsForSession.map((item) => (
                 <option value={item.id} key={item.id}>
-                  {formatDate(item.lessonDate)} - {formatTime(item.startsAt)}-{formatTime(item.endsAt)}
+                  {formatLessonDateWithWeekday(item.lessonDate)} - {formatTime(item.startsAt)}-{formatTime(item.endsAt)}
                 </option>
               ))}
             </select>
           </label>
         </div>
 
+        {!selectedClassId && (
+          <p className="retro-empty-state">Select a class/session to choose a past lesson occurrence.</p>
+        )}
+
         {selectedClassId && lessonsForSession.length === 0 && (
-          <p className="muted">No past lesson occurrences are available for this session.</p>
+          <p className="retro-empty-state">No lesson occurrences are available for this session.</p>
+        )}
+
+        {selectedClassId && lessonsForSession.length > 0 && !selectedLessonId && (
+          <p className="retro-empty-state">Select a lesson date to load the student attendance list.</p>
         )}
 
         {selectedLesson && (
           <>
-            <div className="retro-attendance-toolbar">
-              <div>
-                <strong>{selectedLesson.className}</strong>
-                <p className="muted">
-                  {selectedLesson.teacherName} - {selectedLesson.location ?? "Room not set"} -{" "}
-                  {formatDate(selectedLesson.lessonDate)}
-                </p>
+            <div className="retro-context-sticky">
+              <div className="retro-context-card">
+                <div className="retro-context-main">
+                  <span className="eyebrow">Retroactive Attendance</span>
+                  <h5>{selectedLesson.className}</h5>
+                  <strong>{selectedLessonDateLabel}</strong>
+                  <p>
+                    {selectedLessonTimeLabel} - {selectedLesson.teacherName} -{" "}
+                    {selectedLesson.location ?? "Room not set"}
+                  </p>
+                </div>
+                <div className="retro-context-actions">
+                  <div className="retro-summary-compact" aria-label="Attendance count summary">
+                    <span className="status-pill success">Present <strong>{summary.present}</strong></span>
+                    <span className="status-pill warning">Late <strong>{summary.late}</strong></span>
+                    <span className="status-pill danger">Absent <strong>{summary.absent}</strong></span>
+                    <span className="status-pill neutral">Excused <strong>{summary.excused}</strong></span>
+                    <span className="status-pill neutral">Unset <strong>{summary.unset}</strong></span>
+                  </div>
+                  <button className="secondary" type="button" onClick={markAllPresent} disabled={actionLoading}>
+                    Mark all present
+                  </button>
+                </div>
               </div>
-              <button className="secondary" type="button" onClick={markAllPresent} disabled={actionLoading}>
-                Mark all present
-              </button>
-            </div>
-
-            <div className="attendance-summary-cards">
-              <span>Present <strong>{summary.present}</strong></span>
-              <span>Late <strong>{summary.late}</strong></span>
-              <span>Absent <strong>{summary.absent}</strong></span>
-              <span>Excused <strong>{summary.excused}</strong></span>
-              <span>Unset <strong>{summary.unset}</strong></span>
             </div>
 
             {selectedLesson.students.length === 0 ? (
-              <p className="muted">No students are assigned to this session.</p>
+              <p className="retro-empty-state">No students are assigned to this session.</p>
             ) : (
               <div className="retro-student-list">
                 {selectedLesson.students.map((student) => {
                   const draft = drafts[student.id] ?? { status: "", notes: "" };
                   return (
                     <article className="retro-student-row" key={student.id}>
-                      <div>
+                      <div className="retro-student-identity">
                         <strong>{student.fullName}</strong>
                         <p>{student.studentCode ?? "No student code"}</p>
                         {student.attendanceId && <p>Editing existing attendance record.</p>}
                       </div>
-                      <label>
-                        Status
+                      <label className="retro-status-field">
+                        <span>Status</span>
                         <select
                           value={draft.status}
                           onChange={(event) =>
@@ -2412,8 +2429,8 @@ function RetroactiveAttendancePanel({
                           ))}
                         </select>
                       </label>
-                      <label>
-                        Attendance note
+                      <label className="retro-note-field">
+                        <span>Attendance note</span>
                         <input
                           value={draft.notes}
                           onChange={(event) => updateDraft(student.id, { notes: event.target.value })}
@@ -2429,6 +2446,12 @@ function RetroactiveAttendancePanel({
         )}
 
         {message && <p className={messageType === "success" ? "management-message" : "error"}>{message}</p>}
+
+        {selectedLesson && (
+          <p className="retro-save-context">
+            Saving attendance for {selectedLessonDateLabel} - {selectedLessonTimeLabel}
+          </p>
+        )}
 
         <button type="submit" disabled={!canSave}>
           {actionLoading ? "Saving attendance..." : "Save retroactive attendance"}
@@ -3631,6 +3654,15 @@ function normalizeUserRole(value: unknown): UserRole | null {
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", {
     month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function formatLessonDateWithWeekday(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    weekday: "long",
+    month: "long",
     day: "numeric",
     year: "numeric",
   }).format(new Date(value));

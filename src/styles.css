@@ -1198,37 +1198,149 @@ select:focus {
   gap: 14px;
 }
 
-.retro-selector-grid,
-.retro-student-row {
+.retro-selector-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
-.retro-attendance-toolbar {
+.retro-empty-state {
+  margin: 0;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 13px 14px;
+  background: #f8fbff;
+  color: var(--muted);
+}
+
+.retro-context-sticky {
+  position: sticky;
+  top: 12px;
+  z-index: 4;
+}
+
+.retro-context-card {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   align-items: center;
   justify-content: space-between;
+  border: 1px solid rgba(12, 31, 68, 0.14);
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 14px 34px rgba(12, 31, 68, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.retro-context-main {
+  min-width: 0;
+}
+
+.retro-context-main h5 {
+  margin: 2px 0 5px;
+  color: var(--navy);
+  font-size: 1.05rem;
+}
+
+.retro-context-main strong {
+  display: block;
+  color: var(--navy);
+  font-size: 0.96rem;
+}
+
+.retro-context-main p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.retro-context-actions {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
+.retro-summary-compact {
+  display: flex;
+  max-width: 520px;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.retro-summary-compact .status-pill {
+  padding: 5px 8px;
+  font-size: 0.78rem;
+}
+
+.retro-summary-compact .danger {
+  color: #8a1230;
+  background: #fff1f2;
+}
+
+.retro-summary-compact .neutral {
+  color: var(--muted);
+  background: #f2f5f9;
+}
+
+.retro-summary-compact strong {
+  margin-left: 3px;
 }
 
 .retro-student-list {
   display: grid;
-  gap: 10px;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
 }
 
 .retro-student-row {
-  grid-template-columns: minmax(180px, 1fr) minmax(140px, 0.45fr) minmax(180px, 0.75fr);
-  align-items: end;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(140px, 0.42fr) minmax(190px, 0.75fr);
+  gap: 12px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
   padding: 12px;
   background: #ffffff;
+}
+
+.retro-student-row:last-child {
+  border-bottom: 0;
 }
 
 .retro-student-row p {
   margin: 4px 0 0;
   color: var(--muted);
+}
+
+.retro-student-identity strong {
+  display: block;
+  color: var(--navy);
+}
+
+.retro-student-identity p {
+  font-size: 0.86rem;
+}
+
+.retro-status-field,
+.retro-note-field {
+  gap: 5px;
+}
+
+.retro-status-field span,
+.retro-note-field span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.retro-save-context {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .app-footer {
@@ -1645,9 +1757,17 @@ select:focus {
     grid-template-columns: 1fr;
   }
 
-  .retro-attendance-toolbar {
+  .retro-context-card {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .retro-context-actions {
+    justify-items: stretch;
+  }
+
+  .retro-summary-compact {
+    justify-content: flex-start;
   }
 
   .late-entry-panel {
