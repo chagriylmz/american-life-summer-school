@@ -6,6 +6,15 @@
 
 begin;
 
+-- Business start date for this approved summer school import.
+-- Do not use current_date here; the import may be run after classes started.
+create temp table tmp_visible_yazokulu_dates (
+  start_date date not null
+) on commit drop;
+
+insert into tmp_visible_yazokulu_dates (start_date)
+values (date '2026-07-06');
+
 with teacher_data(employee_code, display_name, bio) as (
   values
   ('YAZ-HUMEYRA', 'HÜMEYRA', 'Imported from visible yazokulu.xlsx worksheet'),
@@ -218,8 +227,8 @@ begin
         'beginner',
         'active',
         16,
-        current_date,
-        current_date + interval '8 weeks',
+        (select start_date from tmp_visible_yazokulu_dates),
+        (select start_date from tmp_visible_yazokulu_dates) + interval '8 weeks',
         jsonb_build_array(jsonb_build_object(
           'days', 'Monday-Wednesday',
           'starts_at', to_char(row_data.starts_at, 'HH24:MI'),
@@ -237,8 +246,8 @@ begin
         level = 'beginner',
         status = 'active',
         capacity = 16,
-        start_date = current_date,
-        end_date = current_date + interval '8 weeks',
+        start_date = (select start_date from tmp_visible_yazokulu_dates),
+        end_date = (select start_date from tmp_visible_yazokulu_dates) + interval '8 weeks',
         schedule = jsonb_build_array(jsonb_build_object(
           'days', 'Monday-Wednesday',
           'starts_at', to_char(row_data.starts_at, 'HH24:MI'),
@@ -262,10 +271,10 @@ begin
       homework,
       status
     )
-    values (
+    select
       existing_class_id,
       teacher_uuid,
-      current_date,
+      lesson_day::date,
       row_data.starts_at,
       row_data.ends_at,
       'Summer School Session - ' || row_data.teacher_name || ' Room ' || row_data.room,
@@ -273,7 +282,12 @@ begin
       null,
       null,
       'scheduled'
-    )
+    from generate_series(
+      (select start_date from tmp_visible_yazokulu_dates),
+      (select start_date from tmp_visible_yazokulu_dates) + interval '8 weeks',
+      interval '1 day'
+    ) as lesson_days(lesson_day)
+    where extract(isodow from lesson_day) in (1, 2, 3)
     on conflict (class_id, lesson_date, starts_at) do update
     set
       teacher_id = excluded.teacher_id,
@@ -402,7 +416,7 @@ select
   rc.class_id,
   s.id,
   'active',
-  current_date
+  (select start_date from tmp_visible_yazokulu_dates)
 from enrollment_data e
 join resolved_classes rc on rc.class_key = e.class_key
 join public.students s on s.student_code = e.student_code
