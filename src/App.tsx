@@ -462,8 +462,10 @@ function App() {
       sessions = await loadSessions(linkedTeacher.id);
     }
 
+    const teacherSessionCards = getTeacherSessionCards(sessions);
+
     setTeacher(linkedTeacher);
-    setTeacherSessions(sessions);
+    setTeacherSessions(teacherSessionCards);
 
     const activeSessions = getActiveSessions(sessions);
     if (activeSessions.length > 1) {
@@ -478,7 +480,7 @@ function App() {
     }
 
     setSelectedSessionId((currentId: string | null) =>
-      currentId && sessions.some((item) => item.id === currentId) ? currentId : sessions[0]?.id ?? null,
+      getNextTeacherSelectedSessionId(currentId, sessions, teacherSessionCards),
     );
   }
 
@@ -1766,9 +1768,6 @@ function CoordinatorDashboard({
           <div className="section-heading compact">
             <h3>Session History</h3>
             <p>{historySessions.length} sessions in view</p>
-            {historyDateContext.kind === "single" && (
-              <p className="history-date-context">Showing sessions for {historyDateContext.label}</p>
-            )}
           </div>
           <div className="history-filter" aria-label="Session history filters">
             {([
@@ -1788,6 +1787,9 @@ function CoordinatorDashboard({
             ))}
           </div>
         </div>
+        {historyDateContext.kind === "single" && (
+          <div className="history-results-context">Showing sessions for {historyDateContext.label}</div>
+        )}
         {historySessions.length === 0 ? (
           <div className="panel">
             <p className="muted">No sessions found for this history filter.</p>
@@ -3758,6 +3760,53 @@ function getWeekStartDate(dateValue: string) {
 
 function getActiveSessions(sessions: SummerSession[]) {
   return sessions.filter((item) => item.startedAt && !item.finishedAt);
+}
+
+function getTeacherSessionCards(sessions: SummerSession[]) {
+  const groupedByClass = new Map<string, SummerSession[]>();
+
+  for (const item of sessions) {
+    const group = groupedByClass.get(item.classId) ?? [];
+    group.push(item);
+    groupedByClass.set(item.classId, group);
+  }
+
+  return Array.from(groupedByClass.values())
+    .map((group) => pickTeacherSessionCard(group))
+    .sort((a, b) => `${a.startsAt}-${a.location ?? ""}-${a.className}`.localeCompare(
+      `${b.startsAt}-${b.location ?? ""}-${b.className}`,
+    ));
+}
+
+function pickTeacherSessionCard(classLessons: SummerSession[]) {
+  const sortedLessons = [...classLessons].sort((a, b) => {
+    const dateCompare = a.lessonDate.localeCompare(b.lessonDate);
+    if (dateCompare !== 0) return dateCompare;
+    return a.startsAt.localeCompare(b.startsAt);
+  });
+  const today = getTodayDate();
+
+  return (
+    sortedLessons.find((item) => item.startedAt && !item.finishedAt) ??
+    sortedLessons.find((item) => item.lessonDate === today) ??
+    sortedLessons.find((item) => item.lessonDate > today) ??
+    sortedLessons[sortedLessons.length - 1]
+  );
+}
+
+function getNextTeacherSelectedSessionId(
+  currentId: string | null,
+  allLessonOccurrences: SummerSession[],
+  sessionCards: SummerSession[],
+) {
+  if (currentId && sessionCards.some((item) => item.id === currentId)) return currentId;
+
+  const currentLesson = currentId ? allLessonOccurrences.find((item) => item.id === currentId) : null;
+  const matchingClassCard = currentLesson
+    ? sessionCards.find((item) => item.classId === currentLesson.classId)
+    : null;
+
+  return matchingClassCard?.id ?? sessionCards[0]?.id ?? null;
 }
 
 function getLifecycleStatus(item: SummerSession) {

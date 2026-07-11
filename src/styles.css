@@ -734,8 +734,9 @@ select:focus {
   color: var(--navy);
 }
 
-.history-date-context {
-  display: inline-flex;
+.history-results-context {
+  display: flex;
+  width: fit-content;
   margin-top: 8px;
   border: 1px solid rgba(20, 130, 208, 0.22);
   border-radius: 999px;
