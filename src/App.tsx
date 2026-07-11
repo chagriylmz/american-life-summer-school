@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabaseClient";
 import { validatePasswordChangeInput } from "./lib/passwordValidation";
@@ -39,6 +39,7 @@ const RETRO_ATTENDANCE_SAVE_ERROR_MESSAGE =
   "Retroactive attendance could not be saved. Please check coordinator permissions and try again.";
 const UNEXPECTED_SAVE_ERROR_MESSAGE =
   "An unexpected error occurred while saving. Please try again or contact the coordinator.";
+const GLOBAL_STUDENT_SEARCH_LIMIT = 10;
 
 type UserProfile = {
   id: string;
@@ -236,6 +237,17 @@ type StudentRecord = {
   studentCode: string | null;
   enrollments: StudentEnrollmentRecord[];
   overallSummary: AttendanceSummary;
+};
+
+type GlobalStudentSearchResult = {
+  key: string;
+  studentId: string;
+  studentName: string;
+  studentCode: string | null;
+  sessionContext: string;
+  teacherName: string;
+  room: string | null;
+  matchedByCode: boolean;
 };
 
 type AttendanceSummary = {
@@ -1789,6 +1801,7 @@ function CoordinatorDashboard({
   const roomRecords = useMemo(() => getRoomRecords(sessions), [sessions]);
   const filteredRoomRecords = roomRecords.filter((item) => matchesRoomSearch(item, roomSearchText));
   const studentRecords = useMemo(() => getStudentRecords(sessions), [sessions]);
+  const globalStudentSearchSource = useMemo(() => getGlobalStudentSearchSource(studentRecords), [studentRecords]);
   const attentionNeededItems = useMemo(() => getAttentionNeededItems(studentRecords), [studentRecords]);
   const filteredStudentRecords = studentRecords.filter((item) => matchesStudentSearch(item, studentSearchText));
   const selectedStudent =
@@ -1867,6 +1880,11 @@ function CoordinatorDashboard({
           <StatCard icon="!" label="Alerts" value={alerts.length} />
         </div>
       </section>
+
+      <GlobalStudentSearch
+        resultsSource={globalStudentSearchSource}
+        onOpenStudentProfile={onOpenStudentProfile}
+      />
 
       <section className="session-group">
         <div className="alerts-panel">
@@ -2145,6 +2163,143 @@ function AdministrationOverviewPanel({
         <StatCard label="Classes" value={classCount} />
         <StatCard label="Completed Lessons" value={completedLessons} />
       </div>
+    </section>
+  );
+}
+
+function GlobalStudentSearch({
+  onOpenStudentProfile,
+  resultsSource,
+}: {
+  onOpenStudentProfile: (studentId: string) => void;
+  resultsSource: GlobalStudentSearchResult[];
+}) {
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const normalizedQuery = normalizeGlobalStudentSearchText(query);
+  const canSearch = normalizedQuery.length >= 2;
+  const matchedResults = useMemo(
+    () => (canSearch ? getGlobalStudentSearchResults(resultsSource, normalizedQuery) : []),
+    [canSearch, normalizedQuery, resultsSource],
+  );
+  const visibleResults = matchedResults.slice(0, GLOBAL_STUDENT_SEARCH_LIMIT);
+  const hasMoreResults = matchedResults.length > visibleResults.length;
+  const showPanel = isOpen && canSearch;
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [normalizedQuery]);
+
+  useEffect(() => {
+    if (visibleResults.length > 0 && activeIndex >= visibleResults.length) {
+      setActiveIndex(0);
+    }
+  }, [activeIndex, visibleResults.length]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [isOpen]);
+
+  const selectResult = (result: GlobalStudentSearchResult) => {
+    onOpenStudentProfile(result.studentId);
+    setIsOpen(false);
+    setQuery("");
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      setIsOpen(false);
+      return;
+    }
+
+    if (!showPanel || visibleResults.length === 0) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((current) => (current + 1) % visibleResults.length);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((current) => (current - 1 + visibleResults.length) % visibleResults.length);
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      selectResult(visibleResults[Math.min(activeIndex, visibleResults.length - 1)]);
+    }
+  };
+
+  return (
+    <section className="global-student-search" ref={rootRef}>
+      <label className="global-student-search-field">
+        <span>Global Student Search</span>
+        <input
+          aria-activedescendant={
+            showPanel && visibleResults.length > 0 ? `global-student-result-${activeIndex}` : undefined
+          }
+          aria-controls="global-student-search-results"
+          aria-expanded={showPanel}
+          autoComplete="off"
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setIsOpen(event.target.value.trim().length > 0);
+          }}
+          onFocus={() => {
+            if (query.trim().length > 0) setIsOpen(true);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder="Search students..."
+          role="combobox"
+          type="search"
+          value={query}
+        />
+      </label>
+
+      {showPanel && (
+        <div className="global-student-results" id="global-student-search-results" role="listbox">
+          {visibleResults.length === 0 ? (
+            <p className="global-student-search-message">No matching students found.</p>
+          ) : (
+            <>
+              {visibleResults.map((result, index) => (
+                <button
+                  aria-selected={index === activeIndex}
+                  className={index === activeIndex ? "global-student-result active" : "global-student-result"}
+                  id={`global-student-result-${index}`}
+                  key={result.key}
+                  onClick={() => selectResult(result)}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  role="option"
+                  type="button"
+                >
+                  <strong>{result.studentName}</strong>
+                  <span>
+                    {result.sessionContext} - {result.teacherName} - {result.room ?? "Room not set"}
+                  </span>
+                  {result.matchedByCode && <em>Matched by student code</em>}
+                </button>
+              ))}
+              {hasMoreResults && (
+                <p className="global-student-search-message">Refine your search to see more results.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -4169,6 +4324,51 @@ function normalizeSearchText(value: string) {
 
 function searchable(value: string | null | undefined) {
   return (value ?? "").toLocaleLowerCase("tr-TR");
+}
+
+function normalizeGlobalStudentSearchText(value: string | null | undefined) {
+  return (value ?? "")
+    .trim()
+    .toLocaleLowerCase("tr-TR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .replace(/\s+/g, " ");
+}
+
+function getGlobalStudentSearchSource(students: StudentRecord[]) {
+  return students.flatMap((student) =>
+    student.enrollments.map((enrollment) => ({
+      key: `${student.id}:${enrollment.key}`,
+      studentId: student.id,
+      studentName: student.fullName,
+      studentCode: student.studentCode,
+      sessionContext: enrollment.sessionTimes.join(", ") || enrollment.className,
+      teacherName: enrollment.teacherName || "Teacher not set",
+      room: enrollment.room,
+      matchedByCode: false,
+    })),
+  );
+}
+
+function getGlobalStudentSearchResults(resultsSource: GlobalStudentSearchResult[], normalizedQuery: string) {
+  if (normalizedQuery.length < 2) return [];
+
+  return resultsSource
+    .map((item) => {
+      const nameMatch = normalizeGlobalStudentSearchText(item.studentName).includes(normalizedQuery);
+      const codeMatch = normalizeGlobalStudentSearchText(item.studentCode).includes(normalizedQuery);
+      return { item: { ...item, matchedByCode: codeMatch && !nameMatch }, nameMatch, codeMatch };
+    })
+    .filter(({ nameMatch, codeMatch }) => nameMatch || codeMatch)
+    .map(({ item }) => item)
+    .sort((a, b) => {
+      const nameCompare = a.studentName.localeCompare(b.studentName);
+      if (nameCompare !== 0) return nameCompare;
+      const sessionCompare = a.sessionContext.localeCompare(b.sessionContext);
+      if (sessionCompare !== 0) return sessionCompare;
+      return a.teacherName.localeCompare(b.teacherName);
+    });
 }
 
 function getAdministrationTabs(isAdmin: boolean): Array<{ id: AdminTab; label: string }> {
