@@ -49,15 +49,25 @@ button {
   transition: background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
-button:hover:not(:disabled) {
-  background: var(--navy-dark);
-  box-shadow: 0 14px 30px rgba(18, 59, 99, 0.22);
-  transform: translateY(-1px);
-}
-
 button:disabled {
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+button:focus-visible,
+summary:focus-visible,
+.session-tab:focus-visible,
+.chip:focus-visible {
+  outline: 3px solid rgba(20, 130, 208, 0.35);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button:hover:not(:disabled) {
+    background: var(--navy-dark);
+    box-shadow: 0 14px 30px rgba(18, 59, 99, 0.22);
+    transform: translateY(-1px);
+  }
 }
 
 .auth-page {
@@ -249,9 +259,11 @@ select:focus {
   box-shadow: none;
 }
 
-.secondary:hover:not(:disabled) {
-  color: #ffffff;
-  background: var(--navy);
+@media (hover: hover) and (pointer: fine) {
+  .secondary:hover:not(:disabled) {
+    color: #ffffff;
+    background: var(--navy);
+  }
 }
 
 .install-button {
@@ -1137,11 +1149,18 @@ select:focus {
   box-shadow: none;
 }
 
-.session-tab:hover:not(:disabled),
 .session-tab.active {
   border-color: var(--navy);
   color: #ffffff;
   background: var(--navy);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .session-tab:hover:not(:disabled) {
+    border-color: var(--navy);
+    color: #ffffff;
+    background: var(--navy);
+  }
 }
 
 .session-header,
@@ -1206,11 +1225,18 @@ select:focus {
   box-shadow: none;
 }
 
-.chip:hover:not(:disabled),
 .chip.selected {
   border-color: var(--blue);
   color: #ffffff;
   background: var(--blue);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .chip:hover:not(:disabled) {
+    border-color: var(--blue);
+    color: #ffffff;
+    background: var(--blue);
+  }
 }
 
 .note-form {
