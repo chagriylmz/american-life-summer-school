@@ -1068,6 +1068,131 @@ select:focus {
   color: var(--muted);
 }
 
+.teacher-linking-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.teacher-linking-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.admin-records-panel {
+  display: grid;
+  gap: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.admin-records-heading {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.compact-search {
+  width: min(100%, 320px);
+}
+
+.admin-record-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-record-row,
+.attendance-history-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.admin-record-row p,
+.attendance-history-row p,
+.student-enrollment-detail p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.student-record-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.25fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.student-record-button {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  min-height: 58px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.student-record-button span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.student-record-button.selected {
+  border-color: var(--blue);
+  outline: 3px solid rgba(20, 130, 208, 0.16);
+}
+
+.admin-record-detail,
+.student-enrollment-detail {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.student-enrollment-detail h5 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 1rem;
+}
+
+.attendance-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.attendance-summary-cards span {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 10px;
+  color: var(--muted);
+  background: #f8fbff;
+  font-size: 0.86rem;
+}
+
+.attendance-summary-cards strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--navy);
+  font-size: 1.05rem;
+}
+
+.attendance-history-list {
+  display: grid;
+  gap: 8px;
+}
+
 .app-footer {
   display: grid;
   gap: 3px;
@@ -1457,6 +1582,26 @@ select:focus {
   }
 
   .user-management-form {
+    grid-template-columns: 1fr;
+  }
+
+  .teacher-linking-form {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-records-heading,
+  .admin-record-row,
+  .attendance-history-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .compact-search {
+    width: 100%;
+  }
+
+  .student-record-layout,
+  .attendance-summary-cards {
     grid-template-columns: 1fr;
   }
 

@@ -166,6 +166,52 @@ type ActivityLogRow = {
 
 type HistoryFilter = "today" | "yesterday" | "week" | "all";
 
+type RoomRecord = {
+  key: string;
+  roomName: string;
+  sessionCount: number;
+  teacherNames: string[];
+  timeLabels: string[];
+};
+
+type StudentLessonHistoryItem = {
+  lessonId: string;
+  lessonDate: string;
+  className: string;
+  timeLabel: string;
+  teacherName: string;
+  room: string | null;
+  attendanceStatus: AttendanceStatus | null;
+  note: string;
+};
+
+type StudentEnrollmentRecord = {
+  key: string;
+  classId: string;
+  className: string;
+  teacherName: string;
+  room: string | null;
+  sessionTimes: string[];
+  history: StudentLessonHistoryItem[];
+  summary: AttendanceSummary;
+};
+
+type StudentRecord = {
+  id: string;
+  fullName: string;
+  studentCode: string | null;
+  enrollments: StudentEnrollmentRecord[];
+  overallSummary: AttendanceSummary;
+};
+
+type AttendanceSummary = {
+  present: number;
+  late: number;
+  absent: number;
+  excused: number;
+  recorded: number;
+};
+
 const SESSION_OUTSIDE_SCHEDULE_MESSAGE = "This session cannot be started outside its scheduled time.";
 
 function App() {
@@ -180,6 +226,7 @@ function App() {
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
   const [userManagementLoading, setUserManagementLoading] = useState(false);
   const [userManagementMessage, setUserManagementMessage] = useState<string | null>(null);
+  const [teacherLinkingMessage, setTeacherLinkingMessage] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -227,6 +274,7 @@ function App() {
       setActivityLogs([]);
       setManagedUsers([]);
       setUserManagementMessage(null);
+      setTeacherLinkingMessage(null);
       return;
     }
 
@@ -377,7 +425,7 @@ function App() {
     if (teacherError) {
       setTeacher(null);
       setTeacherSessions([]);
-      setError("Your teacher login is not linked yet. Ask the coordinator to run the teacher linking SQL.");
+      setError("Your teacher login is not linked yet. Ask an admin to link your teacher account in Administration.");
       return;
     }
 
@@ -653,6 +701,65 @@ function App() {
       setUserManagementMessage(getClientErrorMessage(managementError, "Could not update this user."));
     } finally {
       setUserManagementLoading(false);
+    }
+  }
+
+  async function linkTeacherLogin(teacherId: string, userId: string) {
+    if (!isAdmin) {
+      throw new Error("Only admins can link teacher logins.");
+    }
+
+    const teacherRecord = teachers.find((item) => item.id === teacherId);
+    const userRecord = managedUsers.find((item) => item.id === userId);
+
+    if (!teacherRecord) {
+      throw new Error("Choose a teacher record to link.");
+    }
+
+    if (!userRecord) {
+      throw new Error("Choose a teacher user to link.");
+    }
+
+    if (normalizeUserRole(userRecord.role) !== "teacher") {
+      throw new Error("Only users with the teacher role can be linked to teacher records.");
+    }
+
+    if (!userRecord.is_active) {
+      throw new Error("This teacher user is inactive.");
+    }
+
+    if (teacherRecord.user_id) {
+      throw new Error("This teacher record is already linked.");
+    }
+
+    if (teachers.some((item) => item.user_id === userId)) {
+      throw new Error("This teacher user is already linked to another teacher record.");
+    }
+
+    setActionLoading(true);
+    setTeacherLinkingMessage(null);
+
+    try {
+      const { data: linkedRows, error: linkError } = await supabase
+        .from("teachers")
+        .update({ user_id: userId })
+        .eq("id", teacherId)
+        .is("user_id", null)
+        .select("id, user_id");
+
+      if (linkError) {
+        console.error("[Teacher linking] Could not link teacher login", linkError);
+        throw new Error("Could not link this teacher login. Please try again.");
+      }
+
+      if ((linkedRows?.length ?? 0) !== 1) {
+        throw new Error("Teacher login was not linked because the selected teacher may already be linked.");
+      }
+
+      await Promise.all([loadCoordinatorDashboard(), loadManagedUsers()]);
+      setTeacherLinkingMessage("Teacher login linked successfully.");
+    } finally {
+      setActionLoading(false);
     }
   }
 
@@ -1233,6 +1340,8 @@ function App() {
           onCreateUser={createManagedUser}
           onUpdateUser={updateManagedUser}
           onRefreshUsers={loadManagedUsers}
+          onLinkTeacherLogin={linkTeacherLogin}
+          teacherLinkingMessage={teacherLinkingMessage}
         />
       )}
       {profile.role === "teacher" && (
@@ -1377,6 +1486,8 @@ function CoordinatorDashboard({
   onCreateUser,
   onUpdateUser,
   onRefreshUsers,
+  onLinkTeacherLogin,
+  teacherLinkingMessage,
 }: {
   stats: CoordinatorStats | null;
   teachers: Teacher[];
@@ -1393,12 +1504,30 @@ function CoordinatorDashboard({
   onCreateUser: (input: ManagedUserCreateInput) => Promise<void>;
   onUpdateUser: (userId: string, updates: ManagedUserUpdateInput) => Promise<void>;
   onRefreshUsers: () => Promise<void>;
+  onLinkTeacherLogin: (teacherId: string, userId: string) => Promise<void>;
+  teacherLinkingMessage: string | null;
 }) {
   const [sessionSearch, setSessionSearch] = useState("");
+  const [teacherSearch, setTeacherSearch] = useState("");
+  const [roomSearch, setRoomSearch] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("today");
   const linkedTeachers = teachers.filter((item) => item.user_id);
   const sessionById = new Map(sessions.map((item) => [item.id, item]));
   const teacherById = new Map(teachers.map((item) => [item.id, item]));
+  const managedUserById = new Map(managedUsers.map((item) => [item.id, item]));
+  const teacherSearchText = normalizeSearchText(teacherSearch);
+  const roomSearchText = normalizeSearchText(roomSearch);
+  const studentSearchText = normalizeSearchText(studentSearch);
+  const filteredTeachers = teachers.filter((item) => matchesTeacherSearch(item, managedUserById, teacherSearchText));
+  const roomRecords = getRoomRecords(sessions);
+  const filteredRoomRecords = roomRecords.filter((item) => matchesRoomSearch(item, roomSearchText));
+  const studentRecords = getStudentRecords(sessions);
+  const filteredStudentRecords = studentRecords.filter((item) => matchesStudentSearch(item, studentSearchText));
+  const selectedStudent =
+    (selectedStudentId ? studentRecords.find((item) => item.id === selectedStudentId) : null) ??
+    (filteredStudentRecords.length === 1 ? filteredStudentRecords[0] : null);
   const today = getTodayDate();
   const todaySessions = sessions
     .filter((item) => item.lessonDate === today)
@@ -1599,28 +1728,398 @@ function CoordinatorDashboard({
               onRefreshUsers={onRefreshUsers}
             />
           )}
-          <div>
-            <h4>Teacher Login Linking</h4>
-            <p>
-              Teachers without a linked Auth account cannot log in yet. Create each teacher in Supabase
-              Authentication, then run the linking SQL in <strong>sql/link_teacher_auth_users.sql</strong>.
-            </p>
-          </div>
-          <div className="teacher-grid">
-            <span className="status-pill success">Linked logins: {linkedTeachers.length} / {teachers.length}</span>
-            <span className="status-pill success">Total students: {stats?.studentCount ?? 0}</span>
-            <span className="status-pill warning">
-              Attendance pending: {stats?.attendancePendingCount ?? 0}
-            </span>
-            {teachers.map((item) => (
-              <span className={item.user_id ? "status-pill success" : "status-pill warning"} key={item.id}>
-                {item.display_name}: {item.user_id ? "linked" : "missing login"}
-              </span>
-            ))}
-          </div>
+          <TeacherLoginLinkingPanel
+            actionLoading={actionLoading}
+            isAdmin={isAdminProfile(profile)}
+            managedUsers={managedUsers}
+            message={teacherLinkingMessage}
+            onLinkTeacherLogin={onLinkTeacherLogin}
+            stats={stats}
+            teachers={teachers}
+          />
+          <TeacherRecordsPanel
+            linkedTeachers={linkedTeachers}
+            managedUserById={managedUserById}
+            searchValue={teacherSearch}
+            onSearchChange={setTeacherSearch}
+            teachers={filteredTeachers}
+            totalTeachers={teachers.length}
+          />
+          <RoomRecordsPanel
+            rooms={filteredRoomRecords}
+            searchValue={roomSearch}
+            onSearchChange={setRoomSearch}
+            totalRooms={roomRecords.length}
+          />
+          <StudentRecordsPanel
+            searchValue={studentSearch}
+            onSearchChange={setStudentSearch}
+            selectedStudent={selectedStudent}
+            selectedStudentId={selectedStudentId}
+            students={filteredStudentRecords}
+            totalStudents={studentRecords.length}
+            onSelectStudent={setSelectedStudentId}
+          />
         </div>
       </details>
     </section>
+  );
+}
+
+function TeacherLoginLinkingPanel({
+  actionLoading,
+  isAdmin,
+  managedUsers,
+  message,
+  onLinkTeacherLogin,
+  stats,
+  teachers,
+}: {
+  actionLoading: boolean;
+  isAdmin: boolean;
+  managedUsers: ManagedUser[];
+  message: string | null;
+  onLinkTeacherLogin: (teacherId: string, userId: string) => Promise<void>;
+  stats: CoordinatorStats | null;
+  teachers: Teacher[];
+}) {
+  const [selectedTeacherId, setSelectedTeacherId] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [localMessage, setLocalMessage] = useState<string | null>(null);
+  const [messageType, setMessageType] = useState<"success" | "error">("success");
+  const managedUserById = new Map(managedUsers.map((item) => [item.id, item]));
+  const linkedTeacherUserIds = new Set(teachers.map((item) => item.user_id).filter(Boolean));
+  const linkedTeachers = teachers.filter((item) => item.user_id);
+  const unlinkedTeachers = teachers.filter((item) => !item.user_id);
+  const availableTeacherUsers = managedUsers.filter(
+    (item) => normalizeUserRole(item.role) === "teacher" && item.is_active && !linkedTeacherUserIds.has(item.id),
+  );
+  const selectedTeacher = unlinkedTeachers.find((item) => item.id === selectedTeacherId) ?? null;
+  const selectedUser = availableTeacherUsers.find((item) => item.id === selectedUserId) ?? null;
+  const canSubmitLink = Boolean(selectedTeacher && selectedUser && !actionLoading);
+  const visibleMessage = localMessage ?? message;
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLocalMessage(null);
+
+    try {
+      await onLinkTeacherLogin(selectedTeacherId, selectedUserId);
+      setMessageType("success");
+      setLocalMessage("Teacher login linked successfully.");
+      setSelectedTeacherId("");
+      setSelectedUserId("");
+    } catch (linkError) {
+      setMessageType("error");
+      setLocalMessage(getClientErrorMessage(linkError, "Could not link this teacher login."));
+    }
+  };
+
+  return (
+    <section className="teacher-linking-panel">
+      <div>
+        <h4>Teacher Login Linking</h4>
+        <p>
+          Create a teacher user in User Management, then link that user to the matching imported teacher record.
+        </p>
+      </div>
+      <div className="teacher-grid">
+        <span className="status-pill success">Linked logins: {linkedTeachers.length} / {teachers.length}</span>
+        <span className="status-pill success">Total students: {stats?.studentCount ?? 0}</span>
+        <span className="status-pill warning">
+          Attendance pending: {stats?.attendancePendingCount ?? 0}
+        </span>
+        {teachers.map((item) => {
+          const linkedUser = item.user_id ? managedUserById.get(item.user_id) : null;
+          const linkedLabel = linkedUser
+            ? `linked to ${linkedUser.full_name} (${linkedUser.email})`
+            : item.user_id
+              ? `linked to user ${item.user_id.slice(0, 8)}...`
+              : "missing login";
+
+          return (
+            <span className={item.user_id ? "status-pill success" : "status-pill warning"} key={item.id}>
+              {item.display_name}: {linkedLabel}
+            </span>
+          );
+        })}
+      </div>
+
+      {visibleMessage && (
+        <p className={messageType === "success" ? "management-message" : "error"}>
+          {visibleMessage}
+        </p>
+      )}
+
+      {!isAdmin ? (
+        <p className="muted">Teacher login linking is managed by admin users in this Administration panel.</p>
+      ) : unlinkedTeachers.length === 0 ? (
+        <p className="muted">All imported teachers have linked logins.</p>
+      ) : availableTeacherUsers.length === 0 ? (
+        <p className="muted">Create an active teacher user in User Management, then return here to link it.</p>
+      ) : (
+        <form className="teacher-linking-form" onSubmit={handleSubmit}>
+          <label>
+            Imported teacher record
+            <select
+              value={selectedTeacherId}
+              onChange={(event) => setSelectedTeacherId(event.target.value)}
+              required
+            >
+              <option value="">Choose teacher</option>
+              {unlinkedTeachers.map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.display_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Teacher login user
+            <select
+              value={selectedUserId}
+              onChange={(event) => setSelectedUserId(event.target.value)}
+              required
+            >
+              <option value="">Choose user</option>
+              {availableTeacherUsers.map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.full_name} - {item.email}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" disabled={!canSubmitLink}>
+            Link teacher login
+          </button>
+        </form>
+      )}
+    </section>
+  );
+}
+
+function TeacherRecordsPanel({
+  linkedTeachers,
+  managedUserById,
+  onSearchChange,
+  searchValue,
+  teachers,
+  totalTeachers,
+}: {
+  linkedTeachers: Teacher[];
+  managedUserById: Map<string, ManagedUser>;
+  onSearchChange: (value: string) => void;
+  searchValue: string;
+  teachers: Teacher[];
+  totalTeachers: number;
+}) {
+  return (
+    <section className="admin-records-panel">
+      <div className="admin-records-heading">
+        <div>
+          <h4>Teacher Records</h4>
+          <p>{teachers.length} of {totalTeachers} teachers shown · {linkedTeachers.length} linked logins</p>
+        </div>
+        <label className="search-field compact-search">
+          <span>Search teachers</span>
+          <input
+            type="search"
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Name, code, email"
+          />
+        </label>
+      </div>
+      {teachers.length === 0 ? (
+        <p className="muted">No teacher records match this search.</p>
+      ) : (
+        <div className="admin-record-list">
+          {teachers.map((item) => {
+            const linkedUser = item.user_id ? managedUserById.get(item.user_id) : null;
+            return (
+              <article className="admin-record-row" key={item.id}>
+                <div>
+                  <strong>{item.display_name}</strong>
+                  <p>{item.employee_code ?? "No employee code"}</p>
+                </div>
+                <span className={item.user_id ? "status-pill success" : "status-pill warning"}>
+                  {linkedUser ? `Linked to ${linkedUser.full_name}` : item.user_id ? "Linked" : "Missing login"}
+                </span>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RoomRecordsPanel({
+  onSearchChange,
+  rooms,
+  searchValue,
+  totalRooms,
+}: {
+  onSearchChange: (value: string) => void;
+  rooms: RoomRecord[];
+  searchValue: string;
+  totalRooms: number;
+}) {
+  return (
+    <section className="admin-records-panel">
+      <div className="admin-records-heading">
+        <div>
+          <h4>Room Records</h4>
+          <p>{rooms.length} of {totalRooms} rooms shown</p>
+        </div>
+        <label className="search-field compact-search">
+          <span>Search rooms</span>
+          <input
+            type="search"
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Room name or code"
+          />
+        </label>
+      </div>
+      {rooms.length === 0 ? (
+        <p className="muted">No room records match this search.</p>
+      ) : (
+        <div className="admin-record-list">
+          {rooms.map((item) => (
+            <article className="admin-record-row" key={item.key}>
+              <div>
+                <strong>{item.roomName}</strong>
+                <p>{item.sessionCount} sessions · {item.timeLabels.join(", ")}</p>
+              </div>
+              <span className="status-pill success">{item.teacherNames.join(", ")}</span>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function StudentRecordsPanel({
+  onSearchChange,
+  onSelectStudent,
+  searchValue,
+  selectedStudent,
+  selectedStudentId,
+  students,
+  totalStudents,
+}: {
+  onSearchChange: (value: string) => void;
+  onSelectStudent: (studentId: string | null) => void;
+  searchValue: string;
+  selectedStudent: StudentRecord | null;
+  selectedStudentId: string | null;
+  students: StudentRecord[];
+  totalStudents: number;
+}) {
+  return (
+    <section className="admin-records-panel student-records-panel">
+      <div className="admin-records-heading">
+        <div>
+          <h4>Student Records</h4>
+          <p>{students.length} of {totalStudents} students shown</p>
+        </div>
+        <label className="search-field compact-search">
+          <span>Search students</span>
+          <input
+            type="search"
+            value={searchValue}
+            onChange={(event) => {
+              onSearchChange(event.target.value);
+              onSelectStudent(null);
+            }}
+            placeholder="Student name or code"
+          />
+        </label>
+      </div>
+
+      {students.length === 0 ? (
+        <p className="muted">No student records match this search.</p>
+      ) : (
+        <div className="student-record-layout">
+          <div className="admin-record-list">
+            {students.map((item) => (
+              <button
+                className={item.id === selectedStudentId ? "student-record-button selected" : "student-record-button"}
+                key={item.id}
+                type="button"
+                onClick={() => onSelectStudent(item.id)}
+              >
+                <strong>{item.fullName}</strong>
+                <span>{item.studentCode ?? "No student code"} · {item.enrollments.length} enrollment(s)</span>
+              </button>
+            ))}
+          </div>
+          {selectedStudent ? (
+            <StudentDetailView student={selectedStudent} />
+          ) : (
+            <div className="admin-record-detail">
+              <p className="muted">Select a student to inspect enrollment and attendance history.</p>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function StudentDetailView({ student }: { student: StudentRecord }) {
+  return (
+    <div className="admin-record-detail">
+      <div>
+        <h4>{student.fullName}</h4>
+        <p className="muted">{student.studentCode ? `Student code: ${student.studentCode}` : "No student code"}</p>
+      </div>
+      <AttendanceSummaryCards summary={student.overallSummary} />
+      {student.enrollments.map((enrollment) => (
+        <section className="student-enrollment-detail" key={enrollment.key}>
+          <div>
+            <h5>{enrollment.className}</h5>
+            <p>
+              {enrollment.teacherName} · {enrollment.room ?? "Room not set"} · {enrollment.sessionTimes.join(", ")}
+            </p>
+          </div>
+          <AttendanceSummaryCards summary={enrollment.summary} />
+          {enrollment.history.length === 0 ? (
+            <p className="muted">No occurred lessons are available for this enrollment yet.</p>
+          ) : (
+            <div className="attendance-history-list">
+              {enrollment.history.map((item) => (
+                <article className="attendance-history-row" key={item.lessonId}>
+                  <div>
+                    <strong>{formatDate(item.lessonDate)}</strong>
+                    <p>{item.className} · {item.timeLabel}</p>
+                    <p>{item.teacherName} · {item.room ?? "Room not set"}</p>
+                    {item.note.trim() && <p>Note: {item.note}</p>}
+                  </div>
+                  <span className={`status-pill ${item.attendanceStatus ? "success" : "warning"}`}>
+                    {formatAttendanceStatus(item.attendanceStatus)}
+                  </span>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function AttendanceSummaryCards({ summary }: { summary: AttendanceSummary }) {
+  return (
+    <div className="attendance-summary-cards">
+      <span>Attended <strong>{summary.present}</strong></span>
+      <span>Late <strong>{summary.late}</strong></span>
+      <span>Absent <strong>{summary.absent}</strong></span>
+      <span>Excused <strong>{summary.excused}</strong></span>
+      <span>Total recorded <strong>{summary.recorded}</strong></span>
+    </div>
   );
 }
 
@@ -2331,6 +2830,163 @@ function isSupabasePermissionError(error: unknown) {
     text.includes("insufficient privilege") ||
     maybeError.code === "42501"
   );
+}
+
+function normalizeSearchText(value: string) {
+  return value.trim().toLocaleLowerCase("tr-TR");
+}
+
+function searchable(value: string | null | undefined) {
+  return (value ?? "").toLocaleLowerCase("tr-TR");
+}
+
+function matchesTeacherSearch(teacher: Teacher, managedUserById: Map<string, ManagedUser>, searchText: string) {
+  if (!searchText) return true;
+  const linkedUser = teacher.user_id ? managedUserById.get(teacher.user_id) : null;
+  return [teacher.display_name, teacher.employee_code, teacher.user_id, linkedUser?.full_name, linkedUser?.email].some(
+    (value) => searchable(value).includes(searchText),
+  );
+}
+
+function matchesRoomSearch(room: RoomRecord, searchText: string) {
+  if (!searchText) return true;
+  return [room.roomName, room.key, ...room.teacherNames, ...room.timeLabels].some((value) =>
+    searchable(value).includes(searchText),
+  );
+}
+
+function matchesStudentSearch(student: StudentRecord, searchText: string) {
+  if (!searchText) return true;
+  return [student.fullName, student.studentCode].some((value) => searchable(value).includes(searchText));
+}
+
+function getRoomRecords(sessions: SummerSession[]) {
+  const roomMap = new Map<string, RoomRecord>();
+
+  for (const sessionItem of sessions) {
+    const roomName = sessionItem.location?.trim() || "Room not set";
+    const key = normalizeSearchText(roomName) || "room-not-set";
+    const record = roomMap.get(key) ?? {
+      key,
+      roomName,
+      sessionCount: 0,
+      teacherNames: [],
+      timeLabels: [],
+    };
+    record.sessionCount += 1;
+    addUnique(record.teacherNames, sessionItem.teacherName);
+    addUnique(record.timeLabels, `${formatTime(sessionItem.startsAt)}-${formatTime(sessionItem.endsAt)}`);
+    roomMap.set(key, record);
+  }
+
+  return Array.from(roomMap.values()).sort((a, b) => a.roomName.localeCompare(b.roomName));
+}
+
+function getStudentRecords(sessions: SummerSession[]) {
+  const studentMap = new Map<string, StudentRecord>();
+
+  for (const sessionItem of sessions) {
+    for (const student of sessionItem.students) {
+      const record = studentMap.get(student.id) ?? {
+        id: student.id,
+        fullName: student.fullName,
+        studentCode: student.studentCode,
+        enrollments: [],
+        overallSummary: createEmptyAttendanceSummary(),
+      };
+      const enrollmentKey = `${sessionItem.classId}:${sessionItem.teacherId ?? "unassigned"}:${sessionItem.location ?? ""}`;
+      let enrollment = record.enrollments.find((item) => item.key === enrollmentKey);
+
+      if (!enrollment) {
+        enrollment = {
+          key: enrollmentKey,
+          classId: sessionItem.classId,
+          className: sessionItem.className,
+          teacherName: sessionItem.teacherName,
+          room: sessionItem.location,
+          sessionTimes: [],
+          history: [],
+          summary: createEmptyAttendanceSummary(),
+        };
+        record.enrollments.push(enrollment);
+      }
+
+      addUnique(enrollment.sessionTimes, `${formatTime(sessionItem.startsAt)}-${formatTime(sessionItem.endsAt)}`);
+
+      if (hasLessonOccurred(sessionItem)) {
+        const historyItem = {
+          lessonId: sessionItem.id,
+          lessonDate: sessionItem.lessonDate,
+          className: sessionItem.className,
+          timeLabel: `${formatTime(sessionItem.startsAt)}-${formatTime(sessionItem.endsAt)}`,
+          teacherName: sessionItem.teacherName,
+          room: sessionItem.location,
+          attendanceStatus: student.attendanceStatus,
+          note: sessionItem.note,
+        };
+        enrollment.history.push(historyItem);
+        addToAttendanceSummary(enrollment.summary, student.attendanceStatus);
+        addToAttendanceSummary(record.overallSummary, student.attendanceStatus);
+      }
+
+      studentMap.set(student.id, record);
+    }
+  }
+
+  for (const record of studentMap.values()) {
+    record.enrollments.sort((a, b) => a.className.localeCompare(b.className));
+    for (const enrollment of record.enrollments) {
+      enrollment.history.sort((a, b) => {
+        const dateCompare = a.lessonDate.localeCompare(b.lessonDate);
+        if (dateCompare !== 0) return dateCompare;
+        return a.timeLabel.localeCompare(b.timeLabel);
+      });
+    }
+  }
+
+  return Array.from(studentMap.values()).sort((a, b) => {
+    const nameCompare = a.fullName.localeCompare(b.fullName);
+    if (nameCompare !== 0) return nameCompare;
+    return (a.studentCode ?? "").localeCompare(b.studentCode ?? "");
+  });
+}
+
+function addUnique(list: string[], value: string) {
+  if (!list.includes(value)) list.push(value);
+}
+
+function createEmptyAttendanceSummary(): AttendanceSummary {
+  return {
+    present: 0,
+    late: 0,
+    absent: 0,
+    excused: 0,
+    recorded: 0,
+  };
+}
+
+function addToAttendanceSummary(summary: AttendanceSummary, status: AttendanceStatus | null) {
+  if (!status) return;
+  summary.recorded += 1;
+  if (status === "present") summary.present += 1;
+  if (status === "late") summary.late += 1;
+  if (status === "absent") summary.absent += 1;
+  if (status === "excused") summary.excused += 1;
+}
+
+function hasLessonOccurred(item: SummerSession) {
+  const today = getTodayDate();
+  if (item.lessonDate < today) return true;
+  if (item.lessonDate > today) return false;
+  return getCurrentLocalMinutes() >= timeToMinutes(item.startsAt);
+}
+
+function formatAttendanceStatus(status: AttendanceStatus | null) {
+  if (status === "present") return "Attended";
+  if (status === "late") return "Late";
+  if (status === "absent") return "Absent";
+  if (status === "excused") return "Excused";
+  return "Not recorded";
 }
 
 function hasCompletedAttendance(item: SummerSession) {
