@@ -29,6 +29,15 @@ body {
   min-height: 100vh;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 button,
 input,
 textarea,
@@ -1431,7 +1440,7 @@ select:focus {
 
 .reports-summary-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1469,7 +1478,7 @@ select:focus {
     minmax(130px, 1fr)
     minmax(180px, 1.4fr)
     minmax(90px, 0.7fr)
-    repeat(4, minmax(68px, 0.52fr))
+    repeat(5, minmax(68px, 0.52fr))
     minmax(104px, 0.72fr);
   gap: 10px;
   align-items: center;
@@ -1480,7 +1489,7 @@ select:focus {
 }
 
 .teacher-report-table .report-row {
-  grid-template-columns: minmax(160px, 1.4fr) repeat(6, minmax(72px, 0.6fr));
+  grid-template-columns: minmax(160px, 1.4fr) repeat(7, minmax(72px, 0.6fr));
 }
 
 .report-row:last-child {
@@ -1497,6 +1506,93 @@ select:focus {
   font-size: 0.76rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.report-metric-button {
+  cursor: pointer;
+  text-align: left;
+}
+
+.report-metric-button:hover,
+.report-metric-button:focus-visible {
+  border-color: rgba(20, 130, 208, 0.32);
+  background: #f8fbff;
+}
+
+.report-table-metric {
+  width: fit-content;
+  height: auto;
+  min-height: 0;
+  border: 1px solid rgba(20, 130, 208, 0.24);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #075d99;
+  background: #edf6ff;
+  box-shadow: none;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.report-table-metric:hover,
+.report-table-metric:focus-visible {
+  border-color: var(--blue);
+  background: #e2f1fc;
+  box-shadow: none;
+}
+
+.report-metric-zero {
+  color: var(--muted);
+}
+
+.report-drilldown-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  padding: 14px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(12, 36, 65, 0.06);
+}
+
+.report-drilldown-heading {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.report-drilldown-heading h5,
+.report-drilldown-heading p {
+  margin: 0;
+}
+
+.report-drilldown-heading p {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.report-drilldown-list {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+.report-drilldown-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(90px, 0.55fr) auto minmax(180px, 1.2fr);
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.report-drilldown-row:last-child {
+  border-bottom: 0;
+}
+
+.report-drilldown-row > span:last-child {
+  overflow-wrap: anywhere;
 }
 
 .report-export-actions {
@@ -2351,6 +2447,16 @@ select:focus {
   .report-row,
   .teacher-report-table .report-row {
     grid-template-columns: 1fr;
+  }
+
+  .report-drilldown-heading,
+  .report-drilldown-row {
+    grid-template-columns: 1fr;
+  }
+
+  .report-drilldown-heading {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .report-export-actions {

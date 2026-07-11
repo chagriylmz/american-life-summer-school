@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent } from "react";
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabaseClient";
 import { validatePasswordChangeInput } from "./lib/passwordValidation";
@@ -288,6 +288,7 @@ type DailyReportSessionRow = {
   present: number;
   late: number;
   absent: number;
+  excused: number;
   completed: boolean;
 };
 
@@ -300,6 +301,21 @@ type DailyReportTeacherRow = {
   present: number;
   late: number;
   absent: number;
+  excused: number;
+};
+
+type DailyReportAttendanceRecord = {
+  key: string;
+  lessonId: string;
+  teacherId: string;
+  studentId: string;
+  studentName: string;
+  lessonDate: string;
+  status: AttendanceStatus;
+  lateMinutes: number | null;
+  sessionContext: string;
+  teacherName: string;
+  roomContext: string;
 };
 
 type DailyAttendanceReport = {
@@ -311,8 +327,16 @@ type DailyAttendanceReport = {
   present: number;
   late: number;
   absent: number;
+  excused: number;
+  attendanceRecords: DailyReportAttendanceRecord[];
   sessionRows: DailyReportSessionRow[];
   teacherRows: DailyReportTeacherRow[];
+};
+
+type ReportDrillDownSelection = {
+  status: AttendanceStatus;
+  lessonId?: string;
+  teacherId?: string;
 };
 
 type RetroAttendanceDraft = {
@@ -2076,6 +2100,7 @@ function CoordinatorDashboard({
               <ReportsPanel
                 reportDate={reportDate}
                 sessions={sessions}
+                onOpenStudentProfile={onOpenStudentProfile}
                 onReportDateChange={setReportDate}
               />
             </div>
@@ -2217,7 +2242,7 @@ function GlobalStudentSearch({
     setQuery("");
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
       setIsOpen(false);
       return;
@@ -2488,21 +2513,25 @@ function TeacherLoginLinkingPanel({
 }
 
 function ReportsPanel({
+  onOpenStudentProfile,
   onReportDateChange,
   reportDate,
   sessions,
 }: {
+  onOpenStudentProfile: (studentId: string) => void;
   onReportDateChange: (value: string) => void;
   reportDate: string;
   sessions: SummerSession[];
 }) {
   const [exportError, setExportError] = useState<string | null>(null);
+  const [drillDown, setDrillDown] = useState<ReportDrillDownSelection | null>(null);
   const [printReport, setPrintReport] = useState<{
     generatedAt: Date;
     report: DailyAttendanceReport;
   } | null>(null);
   const report = getDailyAttendanceReport(sessions, reportDate);
   const canExport = report.totalScheduledSessions > 0;
+  const drillDownRecords = drillDown ? getReportDrillDownRecords(report, drillDown) : [];
 
   useEffect(() => {
     if (!printReport) return;
@@ -2525,6 +2554,21 @@ function ReportsPanel({
       window.removeEventListener("afterprint", finishPrint);
     };
   }, [printReport]);
+
+  useEffect(() => {
+    setDrillDown(null);
+  }, [reportDate]);
+
+  useEffect(() => {
+    if (!drillDown) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrillDown(null);
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [drillDown]);
 
   const handleCsvExport = () => {
     setExportError(null);
@@ -2578,10 +2622,37 @@ function ReportsPanel({
         <StatCard label="Attendance Recorded" value={report.sessionsWithAttendanceRecorded} />
         <StatCard label="No Attendance" value={report.sessionsWithNoAttendanceRecorded} />
         <StatCard label="Students Expected" value={report.totalStudentsExpected} />
-        <StatCard label="Present" value={report.present} />
-        <StatCard label="Late" value={report.late} />
-        <StatCard label="Absent" value={report.absent} />
+        <ReportMetricButton
+          label="Attended"
+          value={report.present}
+          onClick={() => setDrillDown({ status: "present" })}
+        />
+        <ReportMetricButton
+          label="Late"
+          value={report.late}
+          onClick={() => setDrillDown({ status: "late" })}
+        />
+        <ReportMetricButton
+          label="Absent"
+          value={report.absent}
+          onClick={() => setDrillDown({ status: "absent" })}
+        />
+        <ReportMetricButton
+          label="Excused"
+          value={report.excused}
+          onClick={() => setDrillDown({ status: "excused" })}
+        />
       </div>
+
+      {drillDown && (
+        <ReportDrillDownPanel
+          records={drillDownRecords}
+          report={report}
+          selection={drillDown}
+          onClose={() => setDrillDown(null)}
+          onOpenStudentProfile={onOpenStudentProfile}
+        />
+      )}
 
       <div className="report-export-actions">
         <div>
@@ -2621,9 +2692,10 @@ function ReportsPanel({
               <span>Session</span>
               <span>Room</span>
               <span>Expected</span>
-              <span>Present</span>
+              <span>Attended</span>
               <span>Late</span>
               <span>Absent</span>
+              <span>Excused</span>
               <span>Status</span>
             </div>
             {report.sessionRows.map((item) => (
@@ -2633,9 +2705,26 @@ function ReportsPanel({
                 <span>{item.className}</span>
                 <span>{item.roomContext}</span>
                 <span>{item.expected}</span>
-                <span>{item.present}</span>
-                <span>{item.late}</span>
-                <span>{item.absent}</span>
+                <ReportTableMetricButton
+                  value={item.present}
+                  status="present"
+                  onClick={() => setDrillDown({ status: "present", lessonId: item.lessonId })}
+                />
+                <ReportTableMetricButton
+                  value={item.late}
+                  status="late"
+                  onClick={() => setDrillDown({ status: "late", lessonId: item.lessonId })}
+                />
+                <ReportTableMetricButton
+                  value={item.absent}
+                  status="absent"
+                  onClick={() => setDrillDown({ status: "absent", lessonId: item.lessonId })}
+                />
+                <ReportTableMetricButton
+                  value={item.excused}
+                  status="excused"
+                  onClick={() => setDrillDown({ status: "excused", lessonId: item.lessonId })}
+                />
                 <span className={item.completed ? "status-pill success" : "status-pill warning"}>
                   {item.completed ? "Completed" : "Missing"}
                 </span>
@@ -2659,9 +2748,10 @@ function ReportsPanel({
               <span>Sessions</span>
               <span>Completed</span>
               <span>Missing</span>
-              <span>Present</span>
+              <span>Attended</span>
               <span>Late</span>
               <span>Absent</span>
+              <span>Excused</span>
             </div>
             {report.teacherRows.map((item) => (
               <div className="report-row" key={item.teacherId}>
@@ -2669,14 +2759,124 @@ function ReportsPanel({
                 <span>{item.scheduledSessions}</span>
                 <span>{item.attendanceCompleted}</span>
                 <span>{item.attendanceMissing}</span>
-                <span>{item.present}</span>
-                <span>{item.late}</span>
-                <span>{item.absent}</span>
+                <ReportTableMetricButton
+                  value={item.present}
+                  status="present"
+                  onClick={() => setDrillDown({ status: "present", teacherId: item.teacherId })}
+                />
+                <ReportTableMetricButton
+                  value={item.late}
+                  status="late"
+                  onClick={() => setDrillDown({ status: "late", teacherId: item.teacherId })}
+                />
+                <ReportTableMetricButton
+                  value={item.absent}
+                  status="absent"
+                  onClick={() => setDrillDown({ status: "absent", teacherId: item.teacherId })}
+                />
+                <ReportTableMetricButton
+                  value={item.excused}
+                  status="excused"
+                  onClick={() => setDrillDown({ status: "excused", teacherId: item.teacherId })}
+                />
               </div>
             ))}
           </div>
         )}
       </section>
+    </section>
+  );
+}
+
+function ReportMetricButton({
+  label,
+  onClick,
+  value,
+}: {
+  label: string;
+  onClick: () => void;
+  value: number;
+}) {
+  if (value === 0) {
+    return <StatCard label={label} value={value} />;
+  }
+
+  return (
+    <button className="stat-card report-metric-button" type="button" onClick={onClick}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </button>
+  );
+}
+
+function ReportTableMetricButton({
+  onClick,
+  status,
+  value,
+}: {
+  onClick: () => void;
+  status: AttendanceStatus;
+  value: number;
+}) {
+  if (value === 0) {
+    return <span className="report-metric-zero">{value}</span>;
+  }
+
+  return (
+    <button className="report-table-metric" type="button" onClick={onClick}>
+      <span className="sr-only">{formatAttendanceStatus(status)} records: </span>
+      {value}
+    </button>
+  );
+}
+
+function ReportDrillDownPanel({
+  onClose,
+  onOpenStudentProfile,
+  records,
+  report,
+  selection,
+}: {
+  onClose: () => void;
+  onOpenStudentProfile: (studentId: string) => void;
+  records: DailyReportAttendanceRecord[];
+  report: DailyAttendanceReport;
+  selection: ReportDrillDownSelection;
+}) {
+  return (
+    <section className="report-drilldown-panel" aria-label="Report drill-down records">
+      <div className="report-drilldown-heading">
+        <div>
+          <h5>{getReportDrillDownTitle(selection)}</h5>
+          <p>{getReportDrillDownContext(report, selection)} - {records.length} records</p>
+        </div>
+        <button className="secondary" type="button" onClick={onClose}>
+          Close
+        </button>
+      </div>
+
+      {records.length === 0 ? (
+        <p className="muted">No contributing attendance records found for this metric.</p>
+      ) : (
+        <div className="report-drilldown-list">
+          {records.map((record) => (
+            <article className="report-drilldown-row" key={record.key}>
+              <button
+                className="inline-student-button"
+                type="button"
+                onClick={() => onOpenStudentProfile(record.studentId)}
+              >
+                {record.studentName}
+              </button>
+              <span>{formatTimelineDate(record.lessonDate)}</span>
+              <span className={`status-pill ${getStudentTimelineStatusKind(record.status)}`}>
+                {getReportRecordStatusLabel(record)}
+              </span>
+              <span>{record.sessionContext} - {record.teacherName} - {record.roomContext}</span>
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -2710,6 +2910,7 @@ function PrintableAttendanceReport({
             <tr><th scope="row">Present</th><td>{report.present}</td></tr>
             <tr><th scope="row">Late</th><td>{report.late}</td></tr>
             <tr><th scope="row">Absent</th><td>{report.absent}</td></tr>
+            <tr><th scope="row">Excused</th><td>{report.excused}</td></tr>
           </tbody>
         </table>
       </section>
@@ -2727,6 +2928,7 @@ function PrintableAttendanceReport({
               <th scope="col">Present</th>
               <th scope="col">Late</th>
               <th scope="col">Absent</th>
+              <th scope="col">Excused</th>
               <th scope="col">Status</th>
             </tr>
           </thead>
@@ -2741,6 +2943,7 @@ function PrintableAttendanceReport({
                 <td>{item.present}</td>
                 <td>{item.late}</td>
                 <td>{item.absent}</td>
+                <td>{item.excused}</td>
                 <td>{item.completed ? "Completed" : "Missing"}</td>
               </tr>
             ))}
@@ -2760,6 +2963,7 @@ function PrintableAttendanceReport({
               <th scope="col">Present</th>
               <th scope="col">Late</th>
               <th scope="col">Absent</th>
+              <th scope="col">Excused</th>
             </tr>
           </thead>
           <tbody>
@@ -2772,6 +2976,7 @@ function PrintableAttendanceReport({
                 <td>{item.present}</td>
                 <td>{item.late}</td>
                 <td>{item.absent}</td>
+                <td>{item.excused}</td>
               </tr>
             ))}
           </tbody>
@@ -4465,32 +4670,36 @@ function getRoomRecords(sessions: SummerSession[]) {
 }
 
 function getDailyAttendanceReport(sessions: SummerSession[], date: string): DailyAttendanceReport {
-  const sessionRows = sessions
+  const reportSessions = sessions
     .filter((item) => item.lessonDate === date)
     .sort((a, b) => {
       const timeCompare = a.startsAt.localeCompare(b.startsAt);
       if (timeCompare !== 0) return timeCompare;
       return a.teacherName.localeCompare(b.teacherName);
-    })
-    .map((item) => {
-      const counts = getAttendanceCounts(item);
-      return {
+    });
+  const attendanceRecords = getDailyReportAttendanceRecords(reportSessions);
+  const recordsByLessonId = groupReportRecords(attendanceRecords, (record) => record.lessonId);
+
+  const sessionRows = reportSessions.map((item) => {
+    const lessonRecords = recordsByLessonId.get(item.id) ?? [];
+    return {
         lessonId: item.id,
         timeLabel: `${formatTime(item.startsAt)}-${formatTime(item.endsAt)}`,
         teacherName: item.teacherName,
         className: item.className,
         roomContext: item.location ?? "Room not set",
         expected: item.students.length,
-        present: counts.present,
-        late: counts.late,
-        absent: counts.absent,
+        present: countReportRecordsByStatus(lessonRecords, "present"),
+        late: countReportRecordsByStatus(lessonRecords, "late"),
+        absent: countReportRecordsByStatus(lessonRecords, "absent"),
+        excused: countReportRecordsByStatus(lessonRecords, "excused"),
         completed: hasCompletedAttendance(item),
       };
     });
 
   const teacherMap = new Map<string, DailyReportTeacherRow>();
   for (const row of sessionRows) {
-    const session = sessions.find((item) => item.id === row.lessonId);
+    const session = reportSessions.find((item) => item.id === row.lessonId);
     const teacherId = session?.teacherId ?? `unassigned-${row.teacherName}`;
     const teacherRow = teacherMap.get(teacherId) ?? {
       teacherId,
@@ -4501,6 +4710,7 @@ function getDailyAttendanceReport(sessions: SummerSession[], date: string): Dail
       present: 0,
       late: 0,
       absent: 0,
+      excused: 0,
     };
 
     teacherRow.scheduledSessions += 1;
@@ -4509,12 +4719,11 @@ function getDailyAttendanceReport(sessions: SummerSession[], date: string): Dail
     teacherRow.present += row.present;
     teacherRow.late += row.late;
     teacherRow.absent += row.absent;
+    teacherRow.excused += row.excused;
     teacherMap.set(teacherId, teacherRow);
   }
 
-  const sessionsWithAttendanceRecorded = sessions.filter(
-    (item) => item.lessonDate === date && hasAnyAttendanceRecorded(item),
-  ).length;
+  const sessionsWithAttendanceRecorded = reportSessions.filter(hasAnyAttendanceRecorded).length;
 
   return {
     date,
@@ -4522,12 +4731,102 @@ function getDailyAttendanceReport(sessions: SummerSession[], date: string): Dail
     sessionsWithAttendanceRecorded,
     sessionsWithNoAttendanceRecorded: sessionRows.length - sessionsWithAttendanceRecorded,
     totalStudentsExpected: sessionRows.reduce((total, item) => total + item.expected, 0),
-    present: sessionRows.reduce((total, item) => total + item.present, 0),
-    late: sessionRows.reduce((total, item) => total + item.late, 0),
-    absent: sessionRows.reduce((total, item) => total + item.absent, 0),
+    present: countReportRecordsByStatus(attendanceRecords, "present"),
+    late: countReportRecordsByStatus(attendanceRecords, "late"),
+    absent: countReportRecordsByStatus(attendanceRecords, "absent"),
+    excused: countReportRecordsByStatus(attendanceRecords, "excused"),
+    attendanceRecords,
     sessionRows,
     teacherRows: Array.from(teacherMap.values()).sort((a, b) => a.teacherName.localeCompare(b.teacherName)),
   };
+}
+
+function getDailyReportAttendanceRecords(sessions: SummerSession[]) {
+  return sessions
+    .flatMap((sessionItem) =>
+      sessionItem.students
+        .filter((student) => student.attendanceStatus)
+        .map((student) => {
+          const status = student.attendanceStatus as AttendanceStatus;
+          return {
+            key: `${sessionItem.id}:${student.id}:${student.attendanceId ?? status}`,
+            lessonId: sessionItem.id,
+            teacherId: sessionItem.teacherId ?? `unassigned-${sessionItem.teacherName}`,
+            studentId: student.id,
+            studentName: student.fullName,
+            lessonDate: sessionItem.lessonDate,
+            status,
+            lateMinutes: getLateMinutes(student.attendanceArrivedAt, sessionItem.lessonDate, sessionItem.startsAt),
+            sessionContext: `${formatTime(sessionItem.startsAt)}-${formatTime(sessionItem.endsAt)}`,
+            teacherName: sessionItem.teacherName,
+            roomContext: sessionItem.location ?? "Room not set",
+          };
+        }),
+    )
+    .sort(sortReportAttendanceRecords);
+}
+
+function groupReportRecords<T extends string>(
+  records: DailyReportAttendanceRecord[],
+  getKey: (record: DailyReportAttendanceRecord) => T,
+) {
+  const grouped = new Map<T, DailyReportAttendanceRecord[]>();
+  for (const record of records) {
+    const group = grouped.get(getKey(record)) ?? [];
+    group.push(record);
+    grouped.set(getKey(record), group);
+  }
+  return grouped;
+}
+
+function countReportRecordsByStatus(records: DailyReportAttendanceRecord[], status: AttendanceStatus) {
+  return records.filter((record) => record.status === status).length;
+}
+
+function getReportDrillDownRecords(report: DailyAttendanceReport, selection: ReportDrillDownSelection) {
+  return report.attendanceRecords
+    .filter((record) => {
+      if (record.status !== selection.status) return false;
+      if (selection.lessonId && record.lessonId !== selection.lessonId) return false;
+      if (selection.teacherId && record.teacherId !== selection.teacherId) return false;
+      return true;
+    })
+    .sort(sortReportAttendanceRecords);
+}
+
+function sortReportAttendanceRecords(a: DailyReportAttendanceRecord, b: DailyReportAttendanceRecord) {
+  const dateCompare = b.lessonDate.localeCompare(a.lessonDate);
+  if (dateCompare !== 0) return dateCompare;
+  const nameCompare = a.studentName.localeCompare(b.studentName);
+  if (nameCompare !== 0) return nameCompare;
+  return a.sessionContext.localeCompare(b.sessionContext);
+}
+
+function getReportDrillDownTitle(selection: ReportDrillDownSelection) {
+  return `${formatAttendanceStatus(selection.status)} Students`;
+}
+
+function getReportDrillDownContext(report: DailyAttendanceReport, selection: ReportDrillDownSelection) {
+  if (selection.lessonId) {
+    const session = report.sessionRows.find((item) => item.lessonId === selection.lessonId);
+    if (session) {
+      return `${session.timeLabel} - ${session.teacherName} - ${formatLessonDateWithWeekday(report.date)}`;
+    }
+  }
+
+  if (selection.teacherId) {
+    const teacher = report.teacherRows.find((item) => item.teacherId === selection.teacherId);
+    if (teacher) return `${teacher.teacherName} - ${formatLessonDateWithWeekday(report.date)}`;
+  }
+
+  return formatLessonDateWithWeekday(report.date);
+}
+
+function getReportRecordStatusLabel(record: DailyReportAttendanceRecord) {
+  if (record.status === "late") {
+    return record.lateMinutes ? `${record.lateMinutes} min late` : "Late";
+  }
+  return formatAttendanceStatus(record.status);
 }
 
 function exportDailyReportCsv(report: DailyAttendanceReport) {
@@ -4543,9 +4842,10 @@ function exportDailyReportCsv(report: DailyAttendanceReport) {
     ["Present", String(report.present)],
     ["Late", String(report.late)],
     ["Absent", String(report.absent)],
+    ["Excused", String(report.excused)],
     [],
     ["Session Breakdown"],
-    ["Session Time", "Teacher", "Class / Session", "Room / Context", "Expected Students", "Present", "Late", "Absent", "Attendance Status"],
+    ["Session Time", "Teacher", "Class / Session", "Room / Context", "Expected Students", "Present", "Late", "Absent", "Excused", "Attendance Status"],
     ...report.sessionRows.map((item) => [
       item.timeLabel,
       item.teacherName,
@@ -4555,11 +4855,12 @@ function exportDailyReportCsv(report: DailyAttendanceReport) {
       String(item.present),
       String(item.late),
       String(item.absent),
+      String(item.excused),
       item.completed ? "Completed" : "Missing",
     ]),
     [],
     ["Teacher Breakdown"],
-    ["Teacher", "Scheduled Sessions", "Attendance Completed", "Attendance Missing", "Present", "Late", "Absent"],
+    ["Teacher", "Scheduled Sessions", "Attendance Completed", "Attendance Missing", "Present", "Late", "Absent", "Excused"],
     ...report.teacherRows.map((item) => [
       item.teacherName,
       String(item.scheduledSessions),
@@ -4568,6 +4869,7 @@ function exportDailyReportCsv(report: DailyAttendanceReport) {
       String(item.present),
       String(item.late),
       String(item.absent),
+      String(item.excused),
     ]),
   ];
   const csv = `\uFEFF${rows.map((row) => row.map(escapeCsvCell).join(";")).join("\r\n")}`;
@@ -4590,6 +4892,7 @@ async function exportDailyReportExcel(report: DailyAttendanceReport) {
         ["Present", report.present],
         ["Late", report.late],
         ["Absent", report.absent],
+        ["Excused", report.excused],
       ],
       boldRows: new Set([1, 4]),
       columnWidths: [26, 18],
@@ -4597,7 +4900,7 @@ async function exportDailyReportExcel(report: DailyAttendanceReport) {
     createWorksheetXml({
       name: "Session Breakdown",
       rows: [
-        ["Session Time", "Teacher", "Class / Session", "Room / Context", "Expected Students", "Present", "Late", "Absent", "Attendance Status"],
+        ["Session Time", "Teacher", "Class / Session", "Room / Context", "Expected Students", "Present", "Late", "Absent", "Excused", "Attendance Status"],
         ...report.sessionRows.map((item) => [
           item.timeLabel,
           item.teacherName,
@@ -4607,18 +4910,19 @@ async function exportDailyReportExcel(report: DailyAttendanceReport) {
           item.present,
           item.late,
           item.absent,
+          item.excused,
           item.completed ? "Completed" : "Missing",
         ]),
       ],
       boldRows: new Set([1]),
       freezeHeader: true,
       autoFilter: true,
-      columnWidths: [16, 22, 34, 18, 18, 12, 12, 12, 20],
+      columnWidths: [16, 22, 34, 18, 18, 12, 12, 12, 12, 20],
     }),
     createWorksheetXml({
       name: "Teacher Breakdown",
       rows: [
-        ["Teacher", "Scheduled Sessions", "Attendance Completed", "Attendance Missing", "Present", "Late", "Absent"],
+        ["Teacher", "Scheduled Sessions", "Attendance Completed", "Attendance Missing", "Present", "Late", "Absent", "Excused"],
         ...report.teacherRows.map((item) => [
           item.teacherName,
           item.scheduledSessions,
@@ -4627,12 +4931,13 @@ async function exportDailyReportExcel(report: DailyAttendanceReport) {
           item.present,
           item.late,
           item.absent,
+          item.excused,
         ]),
       ],
       boldRows: new Set([1]),
       freezeHeader: true,
       autoFilter: true,
-      columnWidths: [24, 20, 22, 20, 12, 12, 12],
+      columnWidths: [24, 20, 22, 20, 12, 12, 12, 12],
     }),
   ];
 
