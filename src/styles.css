@@ -881,44 +881,79 @@ select:focus {
 .activity-feed {
   position: relative;
   display: grid;
-  gap: 0;
-  padding-left: 20px;
-}
-
-.activity-feed::before {
-  content: "";
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: 20px;
-  width: 1px;
-  background: var(--border);
+  gap: 14px;
 }
 
 .activity-feed-row {
-  position: relative;
   display: grid;
-  grid-template-columns: auto minmax(180px, 1.2fr) minmax(130px, 0.9fr) minmax(180px, 1.2fr);
-  gap: 12px;
+  grid-template-columns: 58px minmax(110px, 0.75fr) minmax(130px, 1fr) minmax(160px, 1fr);
+  gap: 10px;
   align-items: center;
   border: 0;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
-  padding: 13px 0 13px 22px;
+  padding: 7px 0;
   background: #ffffff;
+  box-shadow: none;
+  text-align: left;
+  width: 100%;
 }
 
+.activity-feed-row time,
 .activity-feed-row span {
   color: var(--muted);
-}
-
-.activity-feed-row div {
-  display: grid;
-  gap: 3px;
-}
-
-.activity-feed-row div span {
+  font-size: 0.84rem;
   font-weight: 750;
+}
+
+.activity-feed-row strong {
+  color: var(--navy);
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.activity-date-group {
+  display: grid;
+  gap: 5px;
+}
+
+.activity-date-group h4 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.activity-date-list {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+.activity-group-toggle {
+  cursor: pointer;
+}
+
+.activity-group-toggle:hover {
+  background: #f8fbff;
+}
+
+.activity-group-details {
+  display: grid;
+  margin-left: 18px;
+  border-left: 2px solid var(--border);
+  padding-left: 12px;
+}
+
+.activity-group-details .activity-feed-row {
+  grid-template-columns: 58px minmax(110px, 0.75fr) minmax(130px, 1fr) minmax(160px, 1fr);
+  background: #fbfdff;
+}
+
+.activity-show-more {
+  justify-self: start;
+  margin-top: 10px;
 }
 
 .administration-panel {
@@ -1810,11 +1845,18 @@ select:focus {
   }
 
   .activity-feed-row {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 5px 10px;
   }
 
-  .activity-feed-row > span:nth-last-child(-n + 2) {
+  .activity-feed-row > span,
+  .activity-feed-row > strong {
     grid-column: 2;
+  }
+
+  .activity-group-details {
+    margin-left: 8px;
+    padding-left: 10px;
   }
 
   .administration-panel summary {

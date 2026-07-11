@@ -182,6 +182,20 @@ type ActivityLogRow = {
   details: Record<string, unknown> | null;
 };
 
+type ActivityFeedItem =
+  | {
+      kind: "single";
+      id: string;
+      log: ActivityLogRow;
+    }
+  | {
+      kind: "group";
+      id: string;
+      actionType: ActivityActionType;
+      logs: ActivityLogRow[];
+      expanded: boolean;
+    };
+
 type HistoryFilter = "today" | "yesterday" | "week" | "all";
 
 type RoomRecord = {
@@ -3117,6 +3131,145 @@ function ActivityFeed({
   sessionById: Map<string, SummerSession>;
   teacherById: Map<string, Teacher>;
 }) {
+  const [visibleCount, setVisibleCount] = useState(12);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
+  const groupedItems = getActivityFeedItems(logs, expandedGroups);
+  const visibleGroups = getVisibleActivityGroups(groupedItems, visibleCount);
+  const totalItems = groupedItems.reduce((total, group) => total + group.items.length, 0);
+  const shownItems = visibleGroups.reduce((total, group) => total + group.items.length, 0);
+  const canShowMore = shownItems < totalItems;
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <section className="session-group">
+      <div className="section-heading compact">
+        <h3>Activity Feed</h3>
+        <p>Latest session actions - {shownItems} shown</p>
+      </div>
+      {logs.length === 0 ? (
+        <div className="panel">
+          <p className="muted">No activity recorded yet.</p>
+        </div>
+      ) : (
+        <>
+          <div className="activity-feed">
+            {visibleGroups.map((group) => (
+              <section className="activity-date-group" key={group.dateKey}>
+                <h4>{formatActivityDateHeader(group.dateKey)}</h4>
+                <div className="activity-date-list">
+                  {group.items.map((item) =>
+                    item.kind === "single" ? (
+                      <ActivityFeedRow
+                        item={item.log}
+                        key={item.id}
+                        sessionById={sessionById}
+                        teacherById={teacherById}
+                      />
+                    ) : (
+                      <ActivityFeedGroupRow
+                        item={item}
+                        key={item.id}
+                        onToggle={() => toggleGroup(item.id)}
+                        sessionById={sessionById}
+                        teacherById={teacherById}
+                      />
+                    ),
+                  )}
+                </div>
+              </section>
+            ))}
+          </div>
+          {canShowMore && (
+            <button className="secondary activity-show-more" type="button" onClick={() => setVisibleCount((value) => value + 12)}>
+              Show more activity
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function ActivityFeedRow({
+  item,
+  sessionById,
+  teacherById,
+}: {
+  item: ActivityLogRow;
+  sessionById: Map<string, SummerSession>;
+  teacherById: Map<string, Teacher>;
+}) {
+  const display = getActivityDisplay(item, sessionById, teacherById);
+
+  return (
+    <article className="activity-feed-row">
+      <time>{formatActivityTime(item.created_at)}</time>
+      <strong>{display.teacherName}</strong>
+      <span>{getActivityLabel(item.action_type)}</span>
+      <span>{display.sessionLabel}</span>
+    </article>
+  );
+}
+
+function ActivityFeedGroupRow({
+  item,
+  onToggle,
+  sessionById,
+  teacherById,
+}: {
+  item: Extract<ActivityFeedItem, { kind: "group" }>;
+  onToggle: () => void;
+  sessionById: Map<string, SummerSession>;
+  teacherById: Map<string, Teacher>;
+}) {
+  const firstLog = item.logs[0];
+  const display = getActivityDisplay(firstLog, sessionById, teacherById);
+  const uniqueTeachers = new Set(item.logs.map((log) => getActivityDisplay(log, sessionById, teacherById).teacherName));
+
+  return (
+    <article className="activity-feed-group-row">
+      <button className="activity-feed-row activity-group-toggle" type="button" onClick={onToggle}>
+        <time>{formatActivityTime(firstLog.created_at)}</time>
+        <strong>{uniqueTeachers.size === 1 ? display.teacherName : `${uniqueTeachers.size} teachers`}</strong>
+        <span>{getActivityLabel(item.actionType)} - {item.logs.length} actions</span>
+        <span>{item.expanded ? "Hide details" : "View details"}</span>
+      </button>
+      {item.expanded && (
+        <div className="activity-group-details">
+          {item.logs.map((log) => (
+            <ActivityFeedRow
+              item={log}
+              key={log.id}
+              sessionById={sessionById}
+              teacherById={teacherById}
+            />
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function LegacyActivityFeed({
+  logs,
+  sessionById,
+  teacherById,
+}: {
+  logs: ActivityLogRow[];
+  sessionById: Map<string, SummerSession>;
+  teacherById: Map<string, Teacher>;
+}) {
   return (
     <section className="session-group">
       <div className="section-heading compact">
@@ -4100,6 +4253,125 @@ function getTeacherPresenceStatus(lastActiveAt: string | null, nowMs = Date.now(
   if (ageMs <= 3 * 60 * 1000) return { label: "Online now", kind: "online" };
   if (ageMs <= 15 * 60 * 1000) return { label: "Recently active", kind: "recent" };
   return { label: "Offline", kind: "offline" };
+}
+
+function getActivityFeedItems(logs: ActivityLogRow[], expandedGroups: Set<string>) {
+  const items: ActivityFeedItem[] = [];
+  let lateEntryBuffer: ActivityLogRow[] = [];
+
+  const flushLateEntryBuffer = () => {
+    if (lateEntryBuffer.length === 0) return;
+    if (lateEntryBuffer.length === 1) {
+      items.push({ kind: "single", id: lateEntryBuffer[0].id, log: lateEntryBuffer[0] });
+    } else {
+      const id = `late-entry-${lateEntryBuffer[0].id}-${lateEntryBuffer[lateEntryBuffer.length - 1].id}`;
+      items.push({
+        kind: "group",
+        id,
+        actionType: "late_entry_updated",
+        logs: lateEntryBuffer,
+        expanded: expandedGroups.has(id),
+      });
+    }
+    lateEntryBuffer = [];
+  };
+
+  for (const log of logs) {
+    if (log.action_type === "late_entry_updated") {
+      const previousLog = lateEntryBuffer[lateEntryBuffer.length - 1];
+      if (previousLog && !canGroupLateEntryActivity(previousLog, log)) {
+        flushLateEntryBuffer();
+      }
+      lateEntryBuffer.push(log);
+      continue;
+    }
+
+    flushLateEntryBuffer();
+    items.push({ kind: "single", id: log.id, log });
+  }
+
+  flushLateEntryBuffer();
+
+  const groups = new Map<string, ActivityFeedItem[]>();
+  for (const item of items) {
+    const dateKey = getActivityItemFirstLog(item).created_at.slice(0, 10);
+    const groupItems = groups.get(dateKey) ?? [];
+    groupItems.push(item);
+    groups.set(dateKey, groupItems);
+  }
+
+  return Array.from(groups.entries()).map(([dateKey, groupItems]) => ({ dateKey, items: groupItems }));
+}
+
+function canGroupLateEntryActivity(previousLog: ActivityLogRow, nextLog: ActivityLogRow) {
+  if (previousLog.created_at.slice(0, 10) !== nextLog.created_at.slice(0, 10)) return false;
+  const previousTime = new Date(previousLog.created_at).getTime();
+  const nextTime = new Date(nextLog.created_at).getTime();
+  if (!Number.isFinite(previousTime) || !Number.isFinite(nextTime)) return false;
+  return Math.abs(previousTime - nextTime) <= 10 * 60 * 1000;
+}
+
+function getVisibleActivityGroups(
+  groups: Array<{ dateKey: string; items: ActivityFeedItem[] }>,
+  visibleCount: number,
+) {
+  const visibleGroups: Array<{ dateKey: string; items: ActivityFeedItem[] }> = [];
+  let remaining = visibleCount;
+
+  for (const group of groups) {
+    if (remaining <= 0) break;
+    const items = group.items.slice(0, remaining);
+    if (items.length > 0) {
+      visibleGroups.push({ dateKey: group.dateKey, items });
+      remaining -= items.length;
+    }
+  }
+
+  return visibleGroups;
+}
+
+function getActivityItemFirstLog(item: ActivityFeedItem) {
+  return item.kind === "single" ? item.log : item.logs[0];
+}
+
+function getActivityDisplay(
+  log: ActivityLogRow,
+  sessionById: Map<string, SummerSession>,
+  teacherById: Map<string, Teacher>,
+) {
+  const sessionItem = log.lesson_id ? sessionById.get(log.lesson_id) : null;
+  const teacherName =
+    sessionItem?.teacherName ??
+    (log.teacher_id ? teacherById.get(log.teacher_id)?.display_name : null) ??
+    "Unknown teacher";
+  const sessionLabel = sessionItem
+    ? `${formatTime(sessionItem.startsAt)}-${formatTime(sessionItem.endsAt)} - ${sessionItem.location ?? "Room not set"}`
+    : "Session details unavailable";
+
+  return { teacherName, sessionLabel };
+}
+
+function formatActivityTime(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatActivityDateHeader(dateKey: string) {
+  const today = getTodayDate();
+  const yesterday = getDateOffset(today, -1);
+  const date = new Date(`${dateKey}T00:00:00`);
+  const monthDay = new Intl.DateTimeFormat("en", {
+    month: "long",
+    day: "numeric",
+  }).format(date);
+
+  if (dateKey === today) return `TODAY - ${monthDay.toUpperCase()}`;
+  if (dateKey === yesterday) return `YESTERDAY - ${monthDay.toUpperCase()}`;
+
+  const weekday = new Intl.DateTimeFormat("en", { weekday: "long" }).format(date);
+  return `${weekday.toUpperCase()} - ${monthDay.toUpperCase()}`;
 }
 
 function getActivityLabel(actionType: ActivityActionType) {
