@@ -257,6 +257,7 @@ type AttentionNeededItem = {
   studentId: string;
   studentName: string;
   sessionContext: string;
+  roomLabel: string;
   teacherName: string;
   primaryReason: AttentionReason;
   secondaryReasons: AttentionReason[];
@@ -2172,17 +2173,18 @@ function AttentionNeededPanel({
           <p>No students currently require attendance follow-up.</p>
         </div>
       ) : (
-        <div className="attention-needed-list">
+        <div className="attention-needed-list operational-item-grid">
           {items.map((item) => (
             <button
-              className="attention-needed-row"
+              className="attention-needed-row operational-grid-item"
               key={item.id}
               type="button"
               onClick={() => onOpenStudentProfile(item.studentId)}
             >
               <span className="attention-student">
                 <strong>{item.studentName}</strong>
-                <span>{item.sessionContext} - {item.teacherName}</span>
+                <span>{item.sessionContext}</span>
+                <span>{item.roomLabel} - {item.teacherName}</span>
               </span>
               <span className="attention-reasons">
                 <strong>{item.primaryReason.label}</strong>
@@ -2842,27 +2844,17 @@ function StudentRecordsPanel({
       {students.length === 0 ? (
         <p className="muted">No student records match this search.</p>
       ) : (
-        <div className="student-record-layout">
-          <div className="admin-record-list">
-            {students.map((item) => (
-              <button
-                className={item.id === selectedStudentId ? "student-record-button selected" : "student-record-button"}
-                key={item.id}
-                type="button"
-                onClick={() => onSelectStudent(item.id)}
-              >
-                <strong>{item.fullName}</strong>
-                <span>{item.studentCode ?? "No student code"} · {item.enrollments.length} enrollment(s)</span>
-              </button>
-            ))}
-          </div>
-          {selectedStudent ? (
-            <StudentDetailView student={selectedStudent} />
-          ) : (
-            <div className="admin-record-detail">
-              <p className="muted">Select a student to inspect enrollment and attendance history.</p>
-            </div>
-          )}
+        <div className="student-record-grid">
+          {students.map((item) => (
+            <button
+              className={item.id === selectedStudentId ? "student-record-button selected" : "student-record-button"}
+              key={item.id}
+              type="button"
+              onClick={() => onSelectStudent(item.id)}
+            >
+              <strong>{item.fullName}</strong>
+            </button>
+          ))}
         </div>
       )}
     </section>
@@ -4943,6 +4935,7 @@ function getEnrollmentAttentionNeededItem(student: StudentRecord, enrollment: St
     studentId: student.id,
     studentName: student.fullName,
     sessionContext: getAttentionSessionContext(enrollment),
+    roomLabel: enrollment.room ?? "Room not set",
     teacherName: enrollment.teacherName,
     primaryReason: reasons[0],
     secondaryReasons: reasons.slice(1),
@@ -5011,9 +5004,7 @@ function getAttentionReasons(consecutiveAbsences: number, totalLateMinutes: numb
 }
 
 function getAttentionSessionContext(enrollment: StudentEnrollmentRecord) {
-  const timeLabel = enrollment.sessionTimes.join(", ") || enrollment.className;
-  const roomLabel = enrollment.room ? ` - ${enrollment.room}` : "";
-  return `${timeLabel}${roomLabel}`;
+  return enrollment.sessionTimes.join(", ") || enrollment.className;
 }
 
 function getRetroSessionOptions(sessions: SummerSession[]) {
