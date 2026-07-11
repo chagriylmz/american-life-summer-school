@@ -1205,6 +1205,28 @@ select:focus {
   color: var(--muted);
 }
 
+.teacher-activity-meta,
+.teacher-record-statuses {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.teacher-activity-meta span {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: var(--muted);
+  background: #f8fbff;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.teacher-record-statuses {
+  justify-content: flex-end;
+}
+
 .student-record-layout {
   display: grid;
   grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.25fr);
@@ -1476,6 +1498,21 @@ select:focus {
 .warning {
   color: #a20732;
   background: #fff0f4;
+}
+
+.online {
+  color: #075f4f;
+  background: #e8f8f2;
+}
+
+.recent {
+  color: #73510a;
+  background: #fff7df;
+}
+
+.offline {
+  color: var(--muted);
+  background: #eef2f6;
 }
 
 .teacher-layout {
@@ -1836,6 +1873,10 @@ select:focus {
   .attendance-history-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .teacher-record-statuses {
+    justify-content: flex-start;
   }
 
   .compact-search {

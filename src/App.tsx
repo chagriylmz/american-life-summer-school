@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabaseClient";
@@ -51,6 +51,8 @@ type ManagedUser = UserProfile & {
   is_active: boolean;
   created_at: string | null;
   updated_at: string | null;
+  last_login_at: string | null;
+  last_active_at: string | null;
 };
 
 type ManagedUserCreateInput = {
@@ -256,6 +258,7 @@ function App() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const lastActivityWriteRef = useRef(0);
 
   const isCoordinator = useMemo(
     () => Boolean(profile?.is_active && isCoordinatorProfile(profile)),
@@ -274,8 +277,11 @@ function App() {
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
+      if (event === "SIGNED_IN" && nextSession?.user.id) {
+        void recordOwnLogin();
+      }
     });
 
     return () => {
@@ -283,6 +289,31 @@ function App() {
       listener.subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!session?.user.id) {
+      lastActivityWriteRef.current = 0;
+      return;
+    }
+
+    void recordOwnActivity();
+
+    const recordIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        void recordOwnActivity();
+      }
+    };
+
+    const intervalId = window.setInterval(recordIfVisible, 60_000);
+    document.addEventListener("visibilitychange", recordIfVisible);
+    window.addEventListener("focus", recordIfVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", recordIfVisible);
+      window.removeEventListener("focus", recordIfVisible);
+    };
+  }, [session?.user.id]);
 
   useEffect(() => {
     if (!session?.user.id) {
@@ -343,6 +374,28 @@ function App() {
     };
   }, []);
 
+  async function recordOwnLogin() {
+    const { error: loginError } = await supabase.rpc("record_own_login");
+    if (loginError) {
+      console.error("[User activity] Could not record login timestamp", loginError);
+    }
+
+    await recordOwnActivity({ force: true });
+  }
+
+  async function recordOwnActivity(options: { force?: boolean } = {}) {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+
+    const now = Date.now();
+    if (!options.force && now - lastActivityWriteRef.current < 60_000) return;
+
+    lastActivityWriteRef.current = now;
+    const { error: activityError } = await supabase.rpc("record_own_activity");
+    if (activityError) {
+      console.error("[User activity] Could not record activity timestamp", activityError);
+    }
+  }
+
   async function loadSignedInUser(userId: string) {
     setProfileLoading(true);
     setError(null);
@@ -393,7 +446,7 @@ function App() {
     const today = getTodayDate();
     const todaySessions = allSessions.filter((item) => item.lessonDate === today);
 
-    const [teacherCount, studentCount, teacherRows, activityRows] = await Promise.all([
+    const [teacherCount, studentCount, teacherRows, userRows, activityRows] = await Promise.all([
       supabase
         .from("teachers")
         .select("id", { count: "exact", head: true })
@@ -411,19 +464,24 @@ function App() {
       .like("employee_code", "YAZ-%")
       .order("display_name", { ascending: true }),
       supabase
+        .from("users")
+        .select("id, email, full_name, role, is_active, created_at, updated_at, last_login_at, last_active_at")
+        .order("full_name", { ascending: true }),
+      supabase
         .from("activity_logs")
         .select("id, action_type, lesson_id, teacher_id, actor_user_id, details, created_at")
         .order("created_at", { ascending: false })
         .limit(30),
     ]);
 
-    const dashboardError = teacherCount.error || studentCount.error || teacherRows.error || activityRows.error;
+    const dashboardError = teacherCount.error || studentCount.error || teacherRows.error || userRows.error || activityRows.error;
     if (dashboardError) {
       setError(dashboardError.message);
       return;
     }
 
     setTeachers(teacherRows.data ?? []);
+    setManagedUsers((userRows.data ?? []) as ManagedUser[]);
     setCoordinatorSessions(allSessions);
     setActivityLogs((activityRows.data ?? []) as ActivityLogRow[]);
     setStats({
@@ -2118,6 +2176,13 @@ function TeacherRecordsPanel({
   teachers: Teacher[];
   totalTeachers: number;
 }) {
+  const [activityNow, setActivityNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setActivityNow(Date.now()), 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
   return (
     <section className="admin-records-panel">
       <div className="admin-records-heading">
@@ -2141,15 +2206,29 @@ function TeacherRecordsPanel({
         <div className="admin-record-list">
           {teachers.map((item) => {
             const linkedUser = item.user_id ? managedUserById.get(item.user_id) : null;
+            const presence = getTeacherPresenceStatus(linkedUser?.last_active_at ?? null, activityNow);
             return (
               <article className="admin-record-row" key={item.id}>
                 <div>
                   <strong>{item.display_name}</strong>
                   <p>{item.employee_code ?? "No employee code"}</p>
+                  {linkedUser ? (
+                    <div className="teacher-activity-meta">
+                      <span>Last login: {formatActivityTimestamp(linkedUser.last_login_at)}</span>
+                      <span>Last active: {formatActivityTimestamp(linkedUser.last_active_at)}</span>
+                    </div>
+                  ) : (
+                    <p className="muted">No linked app login yet.</p>
+                  )}
                 </div>
-                <span className={item.user_id ? "status-pill success" : "status-pill warning"}>
-                  {linkedUser ? `Linked to ${linkedUser.full_name}` : item.user_id ? "Linked" : "Missing login"}
-                </span>
+                <div className="teacher-record-statuses">
+                  <span className={item.user_id ? "status-pill success" : "status-pill warning"}>
+                    {linkedUser ? `Linked to ${linkedUser.full_name}` : item.user_id ? "Linked" : "Missing login"}
+                  </span>
+                  {linkedUser && (
+                    <span className={`status-pill ${presence.kind}`}>{presence.label}</span>
+                  )}
+                </div>
               </article>
             );
           })}
@@ -4000,6 +4079,27 @@ function formatTimestamp(value: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatActivityTimestamp(value: string | null) {
+  if (!value) return "Never";
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function getTeacherPresenceStatus(lastActiveAt: string | null, nowMs = Date.now()) {
+  if (!lastActiveAt) return { label: "Offline", kind: "offline" };
+  const activeMs = new Date(lastActiveAt).getTime();
+  if (!Number.isFinite(activeMs)) return { label: "Offline", kind: "offline" };
+  const ageMs = nowMs - activeMs;
+  if (ageMs <= 3 * 60 * 1000) return { label: "Online now", kind: "online" };
+  if (ageMs <= 15 * 60 * 1000) return { label: "Recently active", kind: "recent" };
+  return { label: "Offline", kind: "offline" };
 }
 
 function getActivityLabel(actionType: ActivityActionType) {

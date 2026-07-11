@@ -16,6 +16,8 @@ type UserProfileRow = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  last_login_at: string | null;
+  last_active_at: string | null;
 };
 
 type CallerProfile = {
@@ -108,7 +110,7 @@ async function handleRequest(request: Request) {
 async function listUsers(serviceClient: ReturnType<typeof createClient>) {
   const { data, error } = await serviceClient
     .from("users")
-    .select("id, email, full_name, role, is_active, created_at, updated_at")
+    .select("id, email, full_name, role, is_active, created_at, updated_at, last_login_at, last_active_at")
     .order("full_name", { ascending: true });
 
   if (error) {
@@ -186,7 +188,7 @@ async function createUser(serviceClient: ReturnType<typeof createClient>, body: 
       role,
       is_active: isActive,
     })
-    .select("id, email, full_name, role, is_active, created_at, updated_at")
+    .select("id, email, full_name, role, is_active, created_at, updated_at, last_login_at, last_active_at")
     .single<UserProfileRow>();
 
   if (insertProfileError || !insertedProfile) {
@@ -252,7 +254,7 @@ async function updateUser(
     .from("users")
     .update(updates)
     .eq("id", userId)
-    .select("id, email, full_name, role, is_active, created_at, updated_at")
+    .select("id, email, full_name, role, is_active, created_at, updated_at, last_login_at, last_active_at")
     .single<UserProfileRow>();
 
   if (updateError || !updatedProfile) {
