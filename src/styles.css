@@ -943,6 +943,48 @@ select:focus {
   padding: 18px 20px 20px;
 }
 
+.account-settings-panel {
+  margin-bottom: 18px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.account-settings-panel summary {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.account-settings-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.account-settings-panel h3,
+.account-settings-panel h4,
+.account-settings-panel p {
+  margin: 0;
+}
+
+.account-settings-panel summary p {
+  margin-top: 5px;
+  color: var(--muted);
+}
+
+.password-change-form {
+  display: grid;
+  gap: 14px;
+  border-top: 1px solid var(--border);
+  padding: 18px;
+}
+
+.password-change-form button {
+  justify-self: start;
+}
+
 .user-management-panel {
   display: grid;
   gap: 16px;
@@ -1366,6 +1408,16 @@ select:focus {
 
   .administration-body {
     padding: 16px;
+  }
+
+  .account-settings-panel summary {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .password-change-form button {
+    width: 100%;
   }
 
   .user-management-heading,

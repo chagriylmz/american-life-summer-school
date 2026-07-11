@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabaseClient";
+import { validatePasswordChangeInput } from "./lib/passwordValidation";
+import type { PasswordChangeInput } from "./lib/passwordValidation";
 import { getDateOffset, getPreviousSummerSchoolDate } from "./lib/summerSchoolCalendar";
 
 type UserRole = "admin" | "staff" | "teacher" | "student";
@@ -51,6 +53,11 @@ type ManagedUserCreateInput = {
 type ManagedUserUpdateInput = {
   role?: UserRole;
   isActive?: boolean;
+};
+
+type PasswordChangeResult = {
+  message: string;
+  sessionRetained: boolean;
 };
 
 type Teacher = {
@@ -1084,6 +1091,44 @@ function App() {
     setActionLoading(false);
   }
 
+  async function changeOwnPassword(input: PasswordChangeInput): Promise<PasswordChangeResult> {
+    if (!profile?.email) {
+      throw new Error("Could not verify the signed-in user email.");
+    }
+
+    const validation = validatePasswordChangeInput(input);
+    if (!validation.valid) {
+      throw new Error(validation.message);
+    }
+
+    const { error: reauthError } = await supabase.auth.signInWithPassword({
+      email: profile.email,
+      password: input.currentPassword,
+    });
+
+    if (reauthError) {
+      throw new Error("Current password is incorrect.");
+    }
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: input.newPassword,
+    });
+
+    if (updateError) {
+      throw new Error("Could not update your password. Please try again.");
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const sessionRetained = Boolean(sessionData.session);
+
+    return {
+      message: sessionRetained
+        ? "Password changed successfully."
+        : "Password changed successfully. Please sign in again with your new password.",
+      sessionRetained,
+    };
+  }
+
   async function handleInstallApp() {
     if (!installPrompt) return;
     await installPrompt.prompt();
@@ -1169,6 +1214,8 @@ function App() {
 
       {error && <p className="error">{error}</p>}
 
+      <AccountSettingsPanel profile={profile} onChangePassword={changeOwnPassword} />
+
       {isCoordinator && (
         <CoordinatorDashboard
           stats={stats}
@@ -1214,6 +1261,103 @@ function App() {
         <span>Campus Portal · v1.1</span>
       </footer>
     </main>
+  );
+}
+
+function AccountSettingsPanel({
+  profile,
+  onChangePassword,
+}: {
+  profile: UserProfile;
+  onChangePassword: (input: PasswordChangeInput) => Promise<PasswordChangeResult>;
+}) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [messageType, setMessageType] = useState<"success" | "error">("success");
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const result = await onChangePassword({
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      });
+      setMessageType("success");
+      setMessage(result.message);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (passwordError) {
+      setMessageType("error");
+      setMessage(getClientErrorMessage(passwordError, "Could not update your password. Please try again."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <details className="panel account-settings-panel">
+      <summary>
+        <div>
+          <h3>Account Settings</h3>
+          <p>{profile.full_name} - {profile.email}</p>
+        </div>
+        <span className="status-pill success">{profile.role}</span>
+      </summary>
+      <form className="password-change-form" onSubmit={handleSubmit}>
+        <div>
+          <h4>Change Password</h4>
+          <p className="muted">Use your current password to confirm this change.</p>
+        </div>
+        <label>
+          Current password
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(event) => setCurrentPassword(event.target.value)}
+            autoComplete="current-password"
+            required
+          />
+        </label>
+        <label>
+          New password
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+            autoComplete="new-password"
+            minLength={8}
+            required
+          />
+        </label>
+        <label>
+          Confirm new password
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            autoComplete="new-password"
+            minLength={8}
+            required
+          />
+        </label>
+        {message && (
+          <p className={messageType === "success" ? "management-message" : "error"}>
+            {message}
+          </p>
+        )}
+        <button type="submit" disabled={saving}>
+          {saving ? "Changing password..." : "Change password"}
+        </button>
+      </form>
+    </details>
   );
 }
 
