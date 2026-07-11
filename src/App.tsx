@@ -2801,7 +2801,6 @@ function StudentRecordsPanel({
 function StudentDetailView({ student }: { student: StudentRecord }) {
   return (
     <div className="admin-record-detail student-profile-embedded">
-      <p className="student-profile-marker">COMPACT PROFILE ACTIVE</p>
       <StudentProfileContent student={student} />
     </div>
   );

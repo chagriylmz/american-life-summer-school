@@ -1500,18 +1500,6 @@ select:focus {
   overflow-wrap: anywhere;
 }
 
-.student-profile-marker {
-  width: fit-content;
-  margin: 0;
-  border: 1px solid rgba(20, 130, 208, 0.26);
-  border-radius: 999px;
-  padding: 6px 9px;
-  color: var(--navy);
-  background: #edf6ff;
-  font-size: 0.78rem;
-  font-weight: 900;
-}
-
 .student-profile-section {
   display: grid;
   gap: 8px;
