@@ -512,6 +512,82 @@ select:focus {
   font-size: 0.9rem;
 }
 
+.attention-needed-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.attention-needed-heading p,
+.attention-empty-state p {
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+
+.attention-needed-list {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(12, 36, 65, 0.05);
+}
+
+.attention-needed-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1fr);
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 11px 14px;
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.attention-needed-row:last-child {
+  border-bottom: 0;
+}
+
+.attention-needed-row:hover {
+  background: #f8fbff;
+  box-shadow: none;
+}
+
+.attention-needed-row:focus-visible {
+  outline: 3px solid rgba(20, 130, 208, 0.2);
+  outline-offset: -3px;
+}
+
+.attention-student,
+.attention-reasons {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.attention-student strong,
+.attention-reasons strong {
+  color: var(--navy);
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.attention-student span,
+.attention-reasons span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .user-name {
   margin: 6px 0 0;
   color: var(--muted);
@@ -2024,6 +2100,7 @@ select:focus {
   }
 
   .alerts-panel,
+  .attention-needed-row,
   .session-summary-grid {
     grid-template-columns: 1fr;
   }

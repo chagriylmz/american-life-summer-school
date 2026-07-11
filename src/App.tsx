@@ -247,6 +247,24 @@ type AttendanceSummary = {
   lateMinutes: number;
 };
 
+type AttentionReason = {
+  kind: "absence-streak" | "late-minutes" | "late-count";
+  label: string;
+};
+
+type AttentionNeededItem = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  sessionContext: string;
+  teacherName: string;
+  primaryReason: AttentionReason;
+  secondaryReasons: AttentionReason[];
+  consecutiveAbsences: number;
+  totalLateMinutes: number;
+  lateCount: number;
+};
+
 type DailyReportSessionRow = {
   lessonId: string;
   timeLabel: string;
@@ -1767,9 +1785,10 @@ function CoordinatorDashboard({
   const roomSearchText = normalizeSearchText(roomSearch);
   const studentSearchText = normalizeSearchText(studentSearch);
   const filteredTeachers = teachers.filter((item) => matchesTeacherSearch(item, managedUserById, teacherSearchText));
-  const roomRecords = getRoomRecords(sessions);
+  const roomRecords = useMemo(() => getRoomRecords(sessions), [sessions]);
   const filteredRoomRecords = roomRecords.filter((item) => matchesRoomSearch(item, roomSearchText));
-  const studentRecords = getStudentRecords(sessions);
+  const studentRecords = useMemo(() => getStudentRecords(sessions), [sessions]);
+  const attentionNeededItems = useMemo(() => getAttentionNeededItems(studentRecords), [studentRecords]);
   const filteredStudentRecords = studentRecords.filter((item) => matchesStudentSearch(item, studentSearchText));
   const selectedStudent =
     (selectedStudentId ? studentRecords.find((item) => item.id === selectedStudentId) : null) ??
@@ -1866,6 +1885,8 @@ function CoordinatorDashboard({
           )}
         </div>
       </section>
+
+      <AttentionNeededPanel items={attentionNeededItems} onOpenStudentProfile={onOpenStudentProfile} />
 
       <section className="session-group live-sessions-section">
         <div className="live-session-toolbar">
@@ -2123,6 +2144,56 @@ function AdministrationOverviewPanel({
         <StatCard label="Classes" value={classCount} />
         <StatCard label="Completed Lessons" value={completedLessons} />
       </div>
+    </section>
+  );
+}
+
+function AttentionNeededPanel({
+  items,
+  onOpenStudentProfile,
+}: {
+  items: AttentionNeededItem[];
+  onOpenStudentProfile: (studentId: string) => void;
+}) {
+  return (
+    <section className="session-group attention-needed-section">
+      <div className="section-heading compact attention-needed-heading">
+        <div>
+          <h3>Attention Needed</h3>
+          <p>Students who may need attendance follow-up</p>
+        </div>
+        <span className={items.length > 0 ? "status-pill warning" : "status-pill success"}>
+          {items.length} flagged
+        </span>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="panel attention-empty-state">
+          <p>No students currently require attendance follow-up.</p>
+        </div>
+      ) : (
+        <div className="attention-needed-list">
+          {items.map((item) => (
+            <button
+              className="attention-needed-row"
+              key={item.id}
+              type="button"
+              onClick={() => onOpenStudentProfile(item.studentId)}
+            >
+              <span className="attention-student">
+                <strong>{item.studentName}</strong>
+                <span>{item.sessionContext} - {item.teacherName}</span>
+              </span>
+              <span className="attention-reasons">
+                <strong>{item.primaryReason.label}</strong>
+                {item.secondaryReasons.length > 0 && (
+                  <span>{item.secondaryReasons.map((reason) => reason.label).join(" - ")}</span>
+                )}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -4829,6 +4900,120 @@ function getStudentTimelineStatusKind(status: AttendanceStatus | null) {
   if (status === "late") return "warning";
   if (status === "present" || status === "excused") return "success";
   return "warning";
+}
+
+function getAttentionNeededItems(students: StudentRecord[]) {
+  const items: AttentionNeededItem[] = [];
+
+  for (const student of students) {
+    for (const enrollment of student.enrollments) {
+      const item = getEnrollmentAttentionNeededItem(student, enrollment);
+      if (item) items.push(item);
+    }
+  }
+
+  return items.sort((a, b) => {
+    if (b.consecutiveAbsences !== a.consecutiveAbsences) {
+      return b.consecutiveAbsences - a.consecutiveAbsences;
+    }
+    if (b.totalLateMinutes !== a.totalLateMinutes) {
+      return b.totalLateMinutes - a.totalLateMinutes;
+    }
+    if (b.lateCount !== a.lateCount) {
+      return b.lateCount - a.lateCount;
+    }
+    return a.studentName.localeCompare(b.studentName);
+  });
+}
+
+function getEnrollmentAttentionNeededItem(student: StudentRecord, enrollment: StudentEnrollmentRecord) {
+  const recordedHistory = getUniqueRecordedEnrollmentHistory(enrollment.history);
+  if (recordedHistory.length === 0) return null;
+
+  const consecutiveAbsences = getCurrentConsecutiveAbsences(recordedHistory);
+  const lateEntries = recordedHistory.filter((item) => item.attendanceStatus === "late");
+  const lateCount = lateEntries.length;
+  const totalLateMinutes = lateEntries.reduce((sum, item) => sum + (item.lateMinutes ?? 0), 0);
+  const reasons = getAttentionReasons(consecutiveAbsences, totalLateMinutes, lateCount);
+
+  if (reasons.length === 0) return null;
+
+  return {
+    id: `${student.id}:${enrollment.key}`,
+    studentId: student.id,
+    studentName: student.fullName,
+    sessionContext: getAttentionSessionContext(enrollment),
+    teacherName: enrollment.teacherName,
+    primaryReason: reasons[0],
+    secondaryReasons: reasons.slice(1),
+    consecutiveAbsences,
+    totalLateMinutes,
+    lateCount,
+  };
+}
+
+function getUniqueRecordedEnrollmentHistory(history: StudentLessonHistoryItem[]) {
+  const uniqueByLessonId = new Map<string, StudentLessonHistoryItem>();
+
+  for (const item of history) {
+    if (!item.attendanceStatus) continue;
+    if (!uniqueByLessonId.has(item.lessonId)) {
+      uniqueByLessonId.set(item.lessonId, item);
+    }
+  }
+
+  return Array.from(uniqueByLessonId.values()).sort((a, b) => {
+    const dateCompare = a.lessonDate.localeCompare(b.lessonDate);
+    if (dateCompare !== 0) return dateCompare;
+    return a.timeLabel.localeCompare(b.timeLabel);
+  });
+}
+
+function getCurrentConsecutiveAbsences(history: StudentLessonHistoryItem[]) {
+  let streak = 0;
+
+  for (const item of history) {
+    if (item.attendanceStatus === "absent") {
+      streak += 1;
+    } else {
+      streak = 0;
+    }
+  }
+
+  return streak;
+}
+
+function getAttentionReasons(consecutiveAbsences: number, totalLateMinutes: number, lateCount: number) {
+  const reasons: AttentionReason[] = [];
+
+  if (consecutiveAbsences >= 2) {
+    reasons.push({
+      kind: "absence-streak",
+      label: `Absent for ${consecutiveAbsences} consecutive sessions`,
+    });
+  }
+
+  if (totalLateMinutes >= 45) {
+    reasons.push({
+      kind: "late-minutes",
+      label: `${totalLateMinutes} total late minutes`,
+    });
+  }
+
+  if (lateCount >= 3) {
+    reasons.push({
+      kind: "late-count",
+      label: `Late ${lateCount} times`,
+    });
+  }
+
+  return reasons;
+}
+
+function getAttentionSessionContext(enrollment: StudentEnrollmentRecord) {
+  const timeLabel = enrollment.sessionTimes.join(", ") || enrollment.className;
+  const roomLabel = enrollment.room ? ` - ${enrollment.room}` : "";
+  return `${timeLabel}${roomLabel}`;
 }
 
 function getRetroSessionOptions(sessions: SummerSession[]) {
