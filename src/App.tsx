@@ -1804,9 +1804,9 @@ function CoordinatorDashboard({
   const globalStudentSearchSource = useMemo(() => getGlobalStudentSearchSource(studentRecords), [studentRecords]);
   const attentionNeededItems = useMemo(() => getAttentionNeededItems(studentRecords), [studentRecords]);
   const filteredStudentRecords = studentRecords.filter((item) => matchesStudentSearch(item, studentSearchText));
-  const selectedStudent =
-    (selectedStudentId ? studentRecords.find((item) => item.id === selectedStudentId) : null) ??
-    (filteredStudentRecords.length === 1 ? filteredStudentRecords[0] : null);
+  const selectedStudent = selectedStudentId
+    ? studentRecords.find((item) => item.id === selectedStudentId) ?? null
+    : null;
   const today = getTodayDate();
   const todaySessions = sessions
     .filter((item) => item.lessonDate === today)
