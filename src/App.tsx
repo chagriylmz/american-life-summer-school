@@ -1239,7 +1239,7 @@ function CoordinatorDashboard({
           <div className="history-filter" aria-label="Session history filters">
             {([
               ["today", "Today"],
-              ["yesterday", "Yesterday"],
+              ["yesterday", "Last Session"],
               ["week", "This Week"],
               ["all", "All Summer School"],
             ] as const).map(([value, label]) => (
