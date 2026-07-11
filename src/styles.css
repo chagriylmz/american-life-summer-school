@@ -1193,6 +1193,44 @@ select:focus {
   gap: 8px;
 }
 
+.retro-attendance-form {
+  display: grid;
+  gap: 14px;
+}
+
+.retro-selector-grid,
+.retro-student-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.retro-attendance-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.retro-student-list {
+  display: grid;
+  gap: 10px;
+}
+
+.retro-student-row {
+  grid-template-columns: minmax(180px, 1fr) minmax(140px, 0.45fr) minmax(180px, 0.75fr);
+  align-items: end;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.retro-student-row p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
 .app-footer {
   display: grid;
   gap: 3px;
@@ -1601,8 +1639,15 @@ select:focus {
   }
 
   .student-record-layout,
-  .attendance-summary-cards {
+  .attendance-summary-cards,
+  .retro-selector-grid,
+  .retro-student-row {
     grid-template-columns: 1fr;
+  }
+
+  .retro-attendance-toolbar {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .late-entry-panel {

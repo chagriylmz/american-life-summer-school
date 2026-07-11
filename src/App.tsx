@@ -25,6 +25,8 @@ type BeforeInstallPromptEvent = Event & {
 const ACTIVE_ATTENDANCE_MESSAGE = "Attendance can only be updated during an active scheduled session.";
 const ATTENDANCE_SAVE_ERROR_MESSAGE = "Attendance can only be updated during your active scheduled lesson.";
 const LESSON_NOTE_SAVE_ERROR_MESSAGE = "Lesson notes can only be updated during your active scheduled lesson.";
+const RETRO_ATTENDANCE_SAVE_ERROR_MESSAGE =
+  "Retroactive attendance could not be saved. Please check coordinator permissions and try again.";
 const UNEXPECTED_SAVE_ERROR_MESSAGE =
   "An unexpected error occurred while saving. Please try again or contact the coordinator.";
 
@@ -103,6 +105,8 @@ type AttendanceRow = {
   class_id: string;
   student_id: string;
   status: AttendanceStatus;
+  notes: string | null;
+  arrived_at: string | null;
 };
 
 type ClassStudentRow = {
@@ -123,7 +127,10 @@ type SessionStudent = {
   phone: string | null;
   guardianPhone: string | null;
   birthYear: string | null;
+  attendanceId: string | null;
   attendanceStatus: AttendanceStatus | null;
+  attendanceNotes: string | null;
+  attendanceArrivedAt: string | null;
 };
 
 type SummerSession = {
@@ -210,6 +217,11 @@ type AttendanceSummary = {
   absent: number;
   excused: number;
   recorded: number;
+};
+
+type RetroAttendanceDraft = {
+  status: AttendanceStatus | "";
+  notes: string;
 };
 
 const SESSION_OUTSIDE_SCHEDULE_MESSAGE = "This session cannot be started outside its scheduled time.";
@@ -498,7 +510,10 @@ function App() {
         .select("class_id, student_id")
         .in("class_id", classIds)
         .eq("status", "active"),
-      supabase.from("attendance").select("id, lesson_id, class_id, student_id, status").in("lesson_id", lessonIds),
+      supabase
+        .from("attendance")
+        .select("id, lesson_id, class_id, student_id, status, notes, arrived_at")
+        .in("lesson_id", lessonIds),
       supabase.from("lesson_notes").select("id, lesson_id, body").in("lesson_id", lessonIds),
     ]);
 
@@ -574,7 +589,10 @@ function App() {
         phone: typedStudent.phone,
         guardianPhone: typedStudent.guardian_phone,
         birthYear: typedStudent.date_of_birth?.slice(0, 4) ?? null,
+        attendanceId: null,
         attendanceStatus: null,
+        attendanceNotes: null,
+        attendanceArrivedAt: null,
       });
       studentsByClass.set(row.class_id, list);
     }
@@ -583,11 +601,16 @@ function App() {
       const classRow = classById.get(lesson.class_id);
       const teacherRow = lesson.teacher_id ? teacherById.get(lesson.teacher_id) : null;
       const students = (studentsByClass.get(lesson.class_id) ?? [])
-        .map((student) => ({
-          ...student,
-          attendanceStatus:
-            attendanceByLessonStudent.get(`${lesson.id}:${student.id}`)?.status ?? null,
-        }))
+        .map((student) => {
+          const attendanceRow = attendanceByLessonStudent.get(`${lesson.id}:${student.id}`);
+          return {
+            ...student,
+            attendanceId: attendanceRow?.id ?? null,
+            attendanceStatus: attendanceRow?.status ?? null,
+            attendanceNotes: attendanceRow?.notes ?? null,
+            attendanceArrivedAt: attendanceRow?.arrived_at ?? null,
+          };
+        })
         .sort((a, b) => a.fullName.localeCompare(b.fullName));
 
       return {
@@ -758,6 +781,68 @@ function App() {
 
       await Promise.all([loadCoordinatorDashboard(), loadManagedUsers()]);
       setTeacherLinkingMessage("Teacher login linked successfully.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function saveRetroactiveAttendance(lessonId: string, drafts: Record<string, RetroAttendanceDraft>) {
+    if (!profile || !isCoordinator) {
+      throw new Error("Only coordinators can update retroactive attendance.");
+    }
+
+    const selectedLesson = coordinatorSessions.find((item) => item.id === lessonId);
+    if (!selectedLesson) {
+      throw new Error("Choose a real existing lesson before saving attendance.");
+    }
+
+    if (!isPastSession(selectedLesson)) {
+      throw new Error("Retroactive attendance can only be saved for past lessons.");
+    }
+
+    const validStudentIds = new Set(selectedLesson.students.map((student) => student.id));
+    const rowsToSave = Object.entries(drafts)
+      .filter(([, draft]) => draft.status)
+      .map(([studentId, draft]) => {
+        if (!validStudentIds.has(studentId)) {
+          throw new Error("Attendance includes a student who is not enrolled in this session.");
+        }
+
+        return {
+          lesson_id: selectedLesson.id,
+          class_id: selectedLesson.classId,
+          student_id: studentId,
+          status: draft.status as AttendanceStatus,
+          notes: draft.notes.trim() || null,
+          recorded_by: profile.id,
+          recorded_at: new Date().toISOString(),
+        };
+      });
+
+    if (rowsToSave.length === 0) {
+      throw new Error("Set at least one attendance status before saving.");
+    }
+
+    setActionLoading(true);
+    setError(null);
+
+    try {
+      const { error: attendanceError } = await supabase
+        .from("attendance")
+        .upsert(rowsToSave, { onConflict: "lesson_id,student_id" })
+        .select("id, lesson_id, class_id, student_id, status, notes");
+
+      if (attendanceError) {
+        console.error("[Retroactive attendance] Could not save attendance", attendanceError);
+        throw new Error(getFriendlyRetroAttendanceSaveError(attendanceError));
+      }
+
+      await logActivity("late_entry_updated", selectedLesson, {
+        update_type: "retroactive_attendance_saved",
+        recorded_retroactively: true,
+        changed_count: rowsToSave.length,
+      });
+      await loadCoordinatorDashboard();
     } finally {
       setActionLoading(false);
     }
@@ -1341,6 +1426,7 @@ function App() {
           onUpdateUser={updateManagedUser}
           onRefreshUsers={loadManagedUsers}
           onLinkTeacherLogin={linkTeacherLogin}
+          onSaveRetroactiveAttendance={saveRetroactiveAttendance}
           teacherLinkingMessage={teacherLinkingMessage}
         />
       )}
@@ -1487,6 +1573,7 @@ function CoordinatorDashboard({
   onUpdateUser,
   onRefreshUsers,
   onLinkTeacherLogin,
+  onSaveRetroactiveAttendance,
   teacherLinkingMessage,
 }: {
   stats: CoordinatorStats | null;
@@ -1505,6 +1592,7 @@ function CoordinatorDashboard({
   onUpdateUser: (userId: string, updates: ManagedUserUpdateInput) => Promise<void>;
   onRefreshUsers: () => Promise<void>;
   onLinkTeacherLogin: (teacherId: string, userId: string) => Promise<void>;
+  onSaveRetroactiveAttendance: (lessonId: string, drafts: Record<string, RetroAttendanceDraft>) => Promise<void>;
   teacherLinkingMessage: string | null;
 }) {
   const [sessionSearch, setSessionSearch] = useState("");
@@ -1759,6 +1847,11 @@ function CoordinatorDashboard({
             students={filteredStudentRecords}
             totalStudents={studentRecords.length}
             onSelectStudent={setSelectedStudentId}
+          />
+          <RetroactiveAttendancePanel
+            actionLoading={actionLoading}
+            onSaveRetroactiveAttendance={onSaveRetroactiveAttendance}
+            sessions={sessions}
           />
         </div>
       </details>
@@ -2120,6 +2213,228 @@ function AttendanceSummaryCards({ summary }: { summary: AttendanceSummary }) {
       <span>Excused <strong>{summary.excused}</strong></span>
       <span>Total recorded <strong>{summary.recorded}</strong></span>
     </div>
+  );
+}
+
+function RetroactiveAttendancePanel({
+  actionLoading,
+  onSaveRetroactiveAttendance,
+  sessions,
+}: {
+  actionLoading: boolean;
+  onSaveRetroactiveAttendance: (lessonId: string, drafts: Record<string, RetroAttendanceDraft>) => Promise<void>;
+  sessions: SummerSession[];
+}) {
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [selectedLessonId, setSelectedLessonId] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, RetroAttendanceDraft>>({});
+  const [message, setMessage] = useState<string | null>(null);
+  const [messageType, setMessageType] = useState<"success" | "error">("success");
+  const sessionOptions = getRetroSessionOptions(sessions);
+  const lessonsForSession = sessions
+    .filter((item) => item.classId === selectedClassId && isPastSession(item))
+    .sort((a, b) => {
+      const dateCompare = b.lessonDate.localeCompare(a.lessonDate);
+      if (dateCompare !== 0) return dateCompare;
+      return a.startsAt.localeCompare(b.startsAt);
+    });
+  const selectedLesson = lessonsForSession.find((item) => item.id === selectedLessonId) ?? null;
+  const summary = getRetroDraftSummary(drafts, selectedLesson?.students ?? []);
+  const hasSelectedRequiredFields = Boolean(selectedClassId && selectedLessonId && selectedLesson);
+  const canSave = hasSelectedRequiredFields && summary.recorded > 0 && !actionLoading;
+
+  useEffect(() => {
+    setSelectedLessonId("");
+    setDrafts({});
+    setMessage(null);
+  }, [selectedClassId]);
+
+  useEffect(() => {
+    if (!selectedLesson) {
+      setDrafts({});
+      return;
+    }
+
+    setDrafts(
+      Object.fromEntries(
+        selectedLesson.students.map((student) => [
+          student.id,
+          {
+            status: student.attendanceStatus ?? "",
+            notes: student.attendanceNotes ?? "",
+          },
+        ]),
+      ),
+    );
+    setMessage(null);
+  }, [selectedLesson]);
+
+  const updateDraft = (studentId: string, patch: Partial<RetroAttendanceDraft>) => {
+    setDrafts((current) => ({
+      ...current,
+      [studentId]: {
+        status: current[studentId]?.status ?? "",
+        notes: current[studentId]?.notes ?? "",
+        ...patch,
+      },
+    }));
+  };
+
+  const markAllPresent = () => {
+    if (!selectedLesson) return;
+    setDrafts(
+      Object.fromEntries(
+        selectedLesson.students.map((student) => [
+          student.id,
+          {
+            status: "present" as AttendanceStatus,
+            notes: drafts[student.id]?.notes ?? student.attendanceNotes ?? "",
+          },
+        ]),
+      ),
+    );
+  };
+
+  const handleSave = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMessage(null);
+
+    try {
+      if (!selectedLesson) {
+        throw new Error("Select a session and past lesson before saving.");
+      }
+      await onSaveRetroactiveAttendance(selectedLesson.id, drafts);
+      setMessageType("success");
+      setMessage("Retroactive attendance saved successfully.");
+    } catch (saveError) {
+      setMessageType("error");
+      setMessage(getClientErrorMessage(saveError, "Could not save retroactive attendance."));
+    }
+  };
+
+  return (
+    <section className="admin-records-panel retro-attendance-panel">
+      <div className="admin-records-heading">
+        <div>
+          <h4>Retroactive Attendance</h4>
+          <p>Record or correct attendance for past lessons only.</p>
+        </div>
+      </div>
+
+      <form className="retro-attendance-form" onSubmit={handleSave}>
+        <div className="retro-selector-grid">
+          <label>
+            Class / session
+            <select
+              value={selectedClassId}
+              onChange={(event) => setSelectedClassId(event.target.value)}
+              required
+            >
+              <option value="">Choose session</option>
+              {sessionOptions.map((item) => (
+                <option value={item.classId} key={item.classId}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Past lesson date
+            <select
+              value={selectedLessonId}
+              onChange={(event) => setSelectedLessonId(event.target.value)}
+              disabled={!selectedClassId}
+              required
+            >
+              <option value="">Choose past lesson</option>
+              {lessonsForSession.map((item) => (
+                <option value={item.id} key={item.id}>
+                  {formatDate(item.lessonDate)} - {formatTime(item.startsAt)}-{formatTime(item.endsAt)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {selectedClassId && lessonsForSession.length === 0 && (
+          <p className="muted">No past lesson occurrences are available for this session.</p>
+        )}
+
+        {selectedLesson && (
+          <>
+            <div className="retro-attendance-toolbar">
+              <div>
+                <strong>{selectedLesson.className}</strong>
+                <p className="muted">
+                  {selectedLesson.teacherName} - {selectedLesson.location ?? "Room not set"} -{" "}
+                  {formatDate(selectedLesson.lessonDate)}
+                </p>
+              </div>
+              <button className="secondary" type="button" onClick={markAllPresent} disabled={actionLoading}>
+                Mark all present
+              </button>
+            </div>
+
+            <div className="attendance-summary-cards">
+              <span>Present <strong>{summary.present}</strong></span>
+              <span>Late <strong>{summary.late}</strong></span>
+              <span>Absent <strong>{summary.absent}</strong></span>
+              <span>Excused <strong>{summary.excused}</strong></span>
+              <span>Unset <strong>{summary.unset}</strong></span>
+            </div>
+
+            {selectedLesson.students.length === 0 ? (
+              <p className="muted">No students are assigned to this session.</p>
+            ) : (
+              <div className="retro-student-list">
+                {selectedLesson.students.map((student) => {
+                  const draft = drafts[student.id] ?? { status: "", notes: "" };
+                  return (
+                    <article className="retro-student-row" key={student.id}>
+                      <div>
+                        <strong>{student.fullName}</strong>
+                        <p>{student.studentCode ?? "No student code"}</p>
+                        {student.attendanceId && <p>Editing existing attendance record.</p>}
+                      </div>
+                      <label>
+                        Status
+                        <select
+                          value={draft.status}
+                          onChange={(event) =>
+                            updateDraft(student.id, { status: event.target.value as AttendanceStatus | "" })
+                          }
+                        >
+                          <option value="">Unset</option>
+                          {(["present", "late", "absent", "excused"] as AttendanceStatus[]).map((status) => (
+                            <option value={status} key={status}>
+                              {formatAttendanceStatus(status)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Attendance note
+                        <input
+                          value={draft.notes}
+                          onChange={(event) => updateDraft(student.id, { notes: event.target.value })}
+                          placeholder="Optional note"
+                        />
+                      </label>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {message && <p className={messageType === "success" ? "management-message" : "error"}>{message}</p>}
+
+        <button type="submit" disabled={!canSave}>
+          {actionLoading ? "Saving attendance..." : "Save retroactive attendance"}
+        </button>
+      </form>
+    </section>
   );
 }
 
@@ -2816,6 +3131,14 @@ function getFriendlySupabaseSaveError(error: unknown, table: "attendance" | "les
   return UNEXPECTED_SAVE_ERROR_MESSAGE;
 }
 
+function getFriendlyRetroAttendanceSaveError(error: unknown) {
+  if (isSupabasePermissionError(error)) {
+    return RETRO_ATTENDANCE_SAVE_ERROR_MESSAGE;
+  }
+
+  return "Could not save retroactive attendance. Please try again.";
+}
+
 function isSupabasePermissionError(error: unknown) {
   const maybeError = error as { code?: string; message?: string; details?: string; hint?: string };
   const text = [maybeError.code, maybeError.message, maybeError.details, maybeError.hint]
@@ -2949,6 +3272,50 @@ function getStudentRecords(sessions: SummerSession[]) {
     if (nameCompare !== 0) return nameCompare;
     return (a.studentCode ?? "").localeCompare(b.studentCode ?? "");
   });
+}
+
+function getRetroSessionOptions(sessions: SummerSession[]) {
+  const optionMap = new Map<string, { classId: string; label: string; sortKey: string }>();
+
+  for (const item of sessions) {
+    if (optionMap.has(item.classId)) continue;
+    const timeLabel = `${formatTime(item.startsAt)}-${formatTime(item.endsAt)}`;
+    const roomLabel = item.location ?? "Room not set";
+    optionMap.set(item.classId, {
+      classId: item.classId,
+      label: `${item.className} - ${item.teacherName} - ${roomLabel} - ${timeLabel}`,
+      sortKey: `${item.className}-${item.teacherName}-${roomLabel}-${timeLabel}`,
+    });
+  }
+
+  return Array.from(optionMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+}
+
+function getRetroDraftSummary(drafts: Record<string, RetroAttendanceDraft>, students: SessionStudent[]) {
+  const summary = {
+    present: 0,
+    late: 0,
+    absent: 0,
+    excused: 0,
+    unset: 0,
+    recorded: 0,
+  };
+
+  for (const student of students) {
+    const status = drafts[student.id]?.status;
+    if (!status) {
+      summary.unset += 1;
+      continue;
+    }
+
+    summary.recorded += 1;
+    if (status === "present") summary.present += 1;
+    if (status === "late") summary.late += 1;
+    if (status === "absent") summary.absent += 1;
+    if (status === "excused") summary.excused += 1;
+  }
+
+  return summary;
 }
 
 function addUnique(list: string[], value: string) {
