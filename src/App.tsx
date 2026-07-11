@@ -183,9 +183,10 @@ function App() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
   const isCoordinator = useMemo(
-    () => Boolean(profile?.is_active && (profile.role === "admin" || profile.role === "staff")),
+    () => Boolean(profile?.is_active && isCoordinatorProfile(profile)),
     [profile],
   );
+  const isAdmin = useMemo(() => isAdminProfile(profile), [profile]);
 
   const selectedSession = teacherSessions.find((item: SummerSession) => item.id === selectedSessionId) ?? null;
 
@@ -297,7 +298,7 @@ function App() {
       await loadCoordinatorDashboard();
     }
 
-    if (userProfile.role === "admin") {
+    if (isAdminProfile(userProfile)) {
       await loadManagedUsers();
     } else {
       setManagedUsers([]);
@@ -558,7 +559,7 @@ function App() {
   async function refreshCurrentRoleData() {
     if (!profile) return;
     if (isCoordinator) await loadCoordinatorDashboard();
-    if (profile.role === "admin") await loadManagedUsers();
+    if (isAdmin) await loadManagedUsers();
     if (profile.role === "teacher" && session?.user.id) await loadTeacherDashboard(session.user.id);
   }
 
@@ -1443,7 +1444,7 @@ function CoordinatorDashboard({
           </div>
         </summary>
         <div className="administration-body">
-          {profile.role === "admin" && (
+          {isAdminProfile(profile) && (
             <UserManagementPanel
               currentUserId={profile.id}
               users={managedUsers}
@@ -2439,6 +2440,25 @@ function getClientErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function isAdminProfile(profile: Pick<UserProfile, "role"> | null | undefined) {
+  return normalizeUserRole(profile?.role) === "admin";
+}
+
+function isCoordinatorProfile(profile: Pick<UserProfile, "role"> | null | undefined) {
+  const role = normalizeUserRole(profile?.role);
+  return role === "admin" || role === "staff";
+}
+
+function normalizeUserRole(value: unknown): UserRole | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "admin" || normalized === "staff" || normalized === "teacher" || normalized === "student") {
+    return normalized;
+  }
+
+  return null;
 }
 
 function formatDate(value: string) {
