@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabaseClient";
 import { validatePasswordChangeInput } from "./lib/passwordValidation";
@@ -2529,6 +2529,7 @@ function ReportsPanel({
     generatedAt: Date;
     report: DailyAttendanceReport;
   } | null>(null);
+  const drillDownPanelRef = useRef<HTMLElement | null>(null);
   const report = getDailyAttendanceReport(sessions, reportDate);
   const canExport = report.totalScheduledSessions > 0;
   const drillDownRecords = drillDown ? getReportDrillDownRecords(report, drillDown) : [];
@@ -2568,6 +2569,17 @@ function ReportsPanel({
 
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
+  }, [drillDown]);
+
+  useEffect(() => {
+    if (!drillDown) return;
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      drillDownPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      drillDownPanelRef.current?.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
   }, [drillDown]);
 
   const handleCsvExport = () => {
@@ -2646,6 +2658,7 @@ function ReportsPanel({
 
       {drillDown && (
         <ReportDrillDownPanel
+          panelRef={drillDownPanelRef}
           records={drillDownRecords}
           report={report}
           selection={drillDown}
@@ -2833,18 +2846,25 @@ function ReportTableMetricButton({
 function ReportDrillDownPanel({
   onClose,
   onOpenStudentProfile,
+  panelRef,
   records,
   report,
   selection,
 }: {
   onClose: () => void;
   onOpenStudentProfile: (studentId: string) => void;
+  panelRef: RefObject<HTMLElement>;
   records: DailyReportAttendanceRecord[];
   report: DailyAttendanceReport;
   selection: ReportDrillDownSelection;
 }) {
   return (
-    <section className="report-drilldown-panel" aria-label="Report drill-down records">
+    <section
+      className="report-drilldown-panel"
+      ref={panelRef}
+      tabIndex={-1}
+      aria-label="Report drill-down records"
+    >
       <div className="report-drilldown-heading">
         <div>
           <h5>{getReportDrillDownTitle(selection)}</h5>

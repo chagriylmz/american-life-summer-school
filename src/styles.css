@@ -1547,11 +1547,17 @@ select:focus {
 .report-drilldown-panel {
   display: grid;
   gap: 12px;
+  scroll-margin-top: 88px;
   border: 1px solid var(--border);
   border-radius: 13px;
   padding: 14px;
   background: #ffffff;
   box-shadow: 0 14px 34px rgba(12, 36, 65, 0.06);
+}
+
+.report-drilldown-panel:focus {
+  outline: 3px solid rgba(20, 130, 208, 0.18);
+  outline-offset: 3px;
 }
 
 .report-drilldown-heading {
