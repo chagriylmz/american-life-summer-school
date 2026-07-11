@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabaseClient";
+import { getDateOffset, getPreviousSummerSchoolDate } from "./lib/summerSchoolCalendar";
 
 type UserRole = "admin" | "staff" | "teacher" | "student";
 type AttendanceStatus = "present" | "late" | "absent" | "excused";
@@ -1960,7 +1961,7 @@ function getCoordinatorAlerts(todaySessions: SummerSession[]) {
 
 function getHistorySessions(sessions: SummerSession[], filter: HistoryFilter) {
   const today = getTodayDate();
-  const yesterday = getDateOffset(today, -1);
+  const yesterday = getPreviousSummerSchoolDate(today);
   const weekStart = getWeekStartDate(today);
   const filtered = sessions.filter((item) => {
     if (filter === "today") return item.lessonDate === today;
@@ -1974,12 +1975,6 @@ function getHistorySessions(sessions: SummerSession[], filter: HistoryFilter) {
     if (dateCompare !== 0) return dateCompare;
     return `${a.startsAt}-${a.teacherName}`.localeCompare(`${b.startsAt}-${b.teacherName}`);
   });
-}
-
-function getDateOffset(dateValue: string, offsetDays: number) {
-  const date = new Date(`${dateValue}T00:00:00`);
-  date.setDate(date.getDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
 }
 
 function getWeekStartDate(dateValue: string) {
