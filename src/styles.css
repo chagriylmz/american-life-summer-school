@@ -1221,8 +1221,7 @@ select:focus {
   gap: 10px;
 }
 
-.admin-record-row,
-.attendance-history-row {
+.admin-record-row {
   display: flex;
   gap: 12px;
   align-items: center;
@@ -1233,9 +1232,7 @@ select:focus {
   background: #ffffff;
 }
 
-.admin-record-row p,
-.attendance-history-row p,
-.student-enrollment-detail p {
+.admin-record-row p {
   margin: 4px 0 0;
   color: var(--muted);
 }
@@ -1395,47 +1392,222 @@ select:focus {
   outline: 3px solid rgba(20, 130, 208, 0.16);
 }
 
-.admin-record-detail,
-.student-enrollment-detail {
+.student-name-button,
+.inline-student-button {
+  width: fit-content;
+  height: auto;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  color: var(--navy);
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  font-weight: 900;
+  text-align: left;
+}
+
+.student-name-button:hover,
+.inline-student-button:hover {
+  color: var(--blue);
+  background: transparent;
+  box-shadow: none;
+}
+
+.student-name-button:focus-visible,
+.inline-student-button:focus-visible {
+  outline: 3px solid rgba(20, 130, 208, 0.22);
+  outline-offset: 3px;
+}
+
+.student-profile-overlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(8, 39, 71, 0.38);
+}
+
+.student-profile-drawer {
+  display: grid;
+  width: min(100%, 460px);
+  max-height: 100vh;
+  gap: 14px;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  padding: 22px;
+  background: #ffffff;
+  box-shadow: -24px 0 60px rgba(8, 39, 71, 0.22);
+}
+
+.student-profile-header {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.student-profile-header h2,
+.student-profile-header p,
+.student-profile-section h3,
+.student-profile-context span {
+  margin: 0;
+}
+
+.student-profile-header h2 {
+  color: var(--navy);
+  font-size: 1.35rem;
+  line-height: 1.15;
+}
+
+.student-profile-header p,
+.student-profile-context span,
+.student-timeline-row span {
+  color: var(--muted);
+}
+
+.student-profile-meta {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 0;
+}
+
+.student-profile-meta div {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.student-profile-meta dt,
+.student-profile-meta dd {
+  margin: 0;
+}
+
+.student-profile-meta dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.student-profile-meta dd {
+  min-width: 0;
+  color: var(--navy);
+  font-size: 0.9rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.student-profile-marker {
+  width: fit-content;
+  margin: 0;
+  border: 1px solid rgba(20, 130, 208, 0.26);
+  border-radius: 999px;
+  padding: 6px 9px;
+  color: var(--navy);
+  background: #edf6ff;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.student-profile-section {
+  display: grid;
+  gap: 8px;
+}
+
+.student-profile-section h3 {
+  color: var(--navy);
+  font-size: 0.95rem;
+}
+
+.student-profile-context-list {
+  display: grid;
+  gap: 7px;
+}
+
+.student-profile-context {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 11px;
+  background: #f8fbff;
+}
+
+.student-profile-context strong {
+  color: var(--navy);
+}
+
+.student-profile-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.student-profile-summary span {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 9px;
+  color: var(--muted);
+  background: #f8fbff;
+  font-size: 0.8rem;
+}
+
+.student-profile-summary strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--navy);
+  font-size: 1rem;
+}
+
+.student-timeline {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+.student-timeline-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.8fr) auto;
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+}
+
+.student-timeline-row.with-context {
+  grid-template-columns: minmax(96px, 0.75fr) minmax(0, 1fr) auto;
+}
+
+.student-timeline-row time {
+  color: var(--navy);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.student-timeline-row span {
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+}
+
+.student-timeline-row .status-pill {
+  justify-self: end;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
+.student-timeline-context {
+  color: var(--muted);
+}
+
+.admin-record-detail {
   display: grid;
   gap: 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px;
   background: #ffffff;
-}
-
-.student-enrollment-detail h5 {
-  margin: 0;
-  color: var(--navy);
-  font-size: 1rem;
-}
-
-.attendance-summary-cards {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.attendance-summary-cards span {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 9px 10px;
-  color: var(--muted);
-  background: #f8fbff;
-  font-size: 0.86rem;
-}
-
-.attendance-summary-cards strong {
-  display: block;
-  margin-top: 3px;
-  color: var(--navy);
-  font-size: 1.05rem;
-}
-
-.attendance-history-list {
-  display: grid;
-  gap: 8px;
 }
 
 .retro-attendance-form {
@@ -1638,6 +1810,11 @@ select:focus {
 .warning {
   color: #a20732;
   background: #fff0f4;
+}
+
+.danger {
+  color: #8a1230;
+  background: #fff1f2;
 }
 
 .online {
@@ -2035,8 +2212,7 @@ select:focus {
   }
 
   .admin-records-heading,
-  .admin-record-row,
-  .attendance-history-row {
+  .admin-record-row {
     align-items: stretch;
     flex-direction: column;
   }
@@ -2054,6 +2230,33 @@ select:focus {
   .retro-selector-grid,
   .retro-student-row {
     grid-template-columns: 1fr;
+  }
+
+  .student-profile-overlay {
+    align-items: flex-end;
+  }
+
+  .student-profile-drawer {
+    width: 100%;
+    max-height: 94vh;
+    border-top: 1px solid var(--border);
+    border-left: 0;
+    border-radius: 18px 18px 0 0;
+    padding: 18px;
+  }
+
+  .student-profile-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .student-profile-summary,
+  .student-timeline-row {
+    grid-template-columns: 1fr;
+  }
+
+  .student-timeline-row .status-pill {
+    width: fit-content;
   }
 
   .retro-context-card {

@@ -215,6 +215,7 @@ type StudentLessonHistoryItem = {
   teacherName: string;
   room: string | null;
   attendanceStatus: AttendanceStatus | null;
+  lateMinutes: number | null;
   note: string;
 };
 
@@ -243,6 +244,7 @@ type AttendanceSummary = {
   absent: number;
   excused: number;
   recorded: number;
+  lateMinutes: number;
 };
 
 type DailyReportSessionRow = {
@@ -294,6 +296,7 @@ function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [teacher, setTeacher] = useState<Teacher | null>(null);
   const [teacherSessions, setTeacherSessions] = useState<SummerSession[]>([]);
+  const [teacherProfileSessions, setTeacherProfileSessions] = useState<SummerSession[]>([]);
   const [coordinatorSessions, setCoordinatorSessions] = useState<SummerSession[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [stats, setStats] = useState<CoordinatorStats | null>(null);
@@ -303,6 +306,7 @@ function App() {
   const [userManagementMessage, setUserManagementMessage] = useState<string | null>(null);
   const [teacherLinkingMessage, setTeacherLinkingMessage] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [selectedProfileStudentId, setSelectedProfileStudentId] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(true);
@@ -319,6 +323,14 @@ function App() {
   const isAdmin = useMemo(() => isAdminProfile(profile), [profile]);
 
   const selectedSession = teacherSessions.find((item: SummerSession) => item.id === selectedSessionId) ?? null;
+  const studentProfileSessions = isCoordinator
+    ? coordinatorSessions
+    : profile?.role === "teacher"
+      ? teacherProfileSessions
+      : [];
+  const selectedStudentProfile = selectedProfileStudentId
+    ? getStudentRecords(studentProfileSessions).find((item) => item.id === selectedProfileStudentId) ?? null
+    : null;
 
   useEffect(() => {
     let isMounted = true;
@@ -372,6 +384,7 @@ function App() {
       setProfile(null);
       setTeacher(null);
       setTeacherSessions([]);
+      setTeacherProfileSessions([]);
       setCoordinatorSessions([]);
       setTeachers([]);
       setStats(null);
@@ -379,6 +392,7 @@ function App() {
       setManagedUsers([]);
       setUserManagementMessage(null);
       setTeacherLinkingMessage(null);
+      setSelectedProfileStudentId(null);
       return;
     }
 
@@ -406,6 +420,14 @@ function App() {
       document.removeEventListener("visibilitychange", recoverWhenVisible);
     };
   }, [profile?.role, session?.user.id]);
+
+  useEffect(() => {
+    if (!selectedProfileStudentId) return;
+    const canStillSeeStudent = studentProfileSessions.some((item) =>
+      item.students.some((student) => student.id === selectedProfileStudentId),
+    );
+    if (!canStillSeeStudent) setSelectedProfileStudentId(null);
+  }, [selectedProfileStudentId, studentProfileSessions]);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (event: Event) => {
@@ -556,6 +578,7 @@ function App() {
     if (teacherError) {
       setTeacher(null);
       setTeacherSessions([]);
+      setTeacherProfileSessions([]);
       setError("Your teacher login is not linked yet. Ask an admin to link your teacher account in Administration.");
       return;
     }
@@ -575,6 +598,7 @@ function App() {
     const teacherSessionCards = getTeacherSessionCards(sessions);
 
     setTeacher(linkedTeacher);
+    setTeacherProfileSessions(sessions);
     setTeacherSessions(teacherSessionCards);
 
     const activeSessions = getActiveSessions(sessions);
@@ -1549,6 +1573,7 @@ function App() {
           onLinkTeacherLogin={linkTeacherLogin}
           onSaveRetroactiveAttendance={saveRetroactiveAttendance}
           teacherLinkingMessage={teacherLinkingMessage}
+          onOpenStudentProfile={setSelectedProfileStudentId}
         />
       )}
       {profile.role === "teacher" && (
@@ -1563,6 +1588,7 @@ function App() {
           onFinishSession={finishSession}
           onMarkAttendance={markAttendance}
           onSaveNote={saveLessonNote}
+          onOpenStudentProfile={setSelectedProfileStudentId}
         />
       )}
       {!isCoordinator && profile.role !== "teacher" && (
@@ -1576,6 +1602,12 @@ function App() {
         <span>Sancaktepe Branch</span>
         <span>Campus Portal · v1.1</span>
       </footer>
+      {selectedStudentProfile && (
+        <StudentProfileDrawer
+          student={selectedStudentProfile}
+          onClose={() => setSelectedProfileStudentId(null)}
+        />
+      )}
     </main>
   );
 }
@@ -1696,6 +1728,7 @@ function CoordinatorDashboard({
   onLinkTeacherLogin,
   onSaveRetroactiveAttendance,
   teacherLinkingMessage,
+  onOpenStudentProfile,
 }: {
   stats: CoordinatorStats | null;
   teachers: Teacher[];
@@ -1715,6 +1748,7 @@ function CoordinatorDashboard({
   onLinkTeacherLogin: (teacherId: string, userId: string) => Promise<void>;
   onSaveRetroactiveAttendance: (lessonId: string, drafts: Record<string, RetroAttendanceDraft>) => Promise<void>;
   teacherLinkingMessage: string | null;
+  onOpenStudentProfile: (studentId: string) => void;
 }) {
   const [sessionSearch, setSessionSearch] = useState("");
   const [teacherSearch, setTeacherSearch] = useState("");
@@ -1868,6 +1902,7 @@ function CoordinatorDashboard({
                 onMarkAttendance={onMarkAttendance}
                 onSaveNote={onSaveNote}
                 activityLogs={activityLogs}
+                onOpenStudentProfile={onOpenStudentProfile}
               />
             ))}
           </div>
@@ -1916,6 +1951,7 @@ function CoordinatorDashboard({
                 onMarkAttendance={onMarkAttendance}
                 onSaveNote={onSaveNote}
                 activityLogs={activityLogs}
+                onOpenStudentProfile={onOpenStudentProfile}
                 compact
                 showLessonDate={showHistoryDateOnCards}
               />
@@ -2020,6 +2056,7 @@ function CoordinatorDashboard({
               <RetroactiveAttendancePanel
                 actionLoading={actionLoading}
                 onSaveRetroactiveAttendance={onSaveRetroactiveAttendance}
+                onOpenStudentProfile={onOpenStudentProfile}
                 sessions={sessions}
               />
             </div>
@@ -2763,65 +2800,145 @@ function StudentRecordsPanel({
 
 function StudentDetailView({ student }: { student: StudentRecord }) {
   return (
-    <div className="admin-record-detail">
-      <div>
-        <h4>{student.fullName}</h4>
-        <p className="muted">{student.studentCode ? `Student code: ${student.studentCode}` : "No student code"}</p>
-      </div>
-      <AttendanceSummaryCards summary={student.overallSummary} />
-      {student.enrollments.map((enrollment) => (
-        <section className="student-enrollment-detail" key={enrollment.key}>
-          <div>
-            <h5>{enrollment.className}</h5>
-            <p>
-              {enrollment.teacherName} · {enrollment.room ?? "Room not set"} · {enrollment.sessionTimes.join(", ")}
-            </p>
-          </div>
-          <AttendanceSummaryCards summary={enrollment.summary} />
-          {enrollment.history.length === 0 ? (
-            <p className="muted">No occurred lessons are available for this enrollment yet.</p>
+    <div className="admin-record-detail student-profile-embedded">
+      <p className="student-profile-marker">COMPACT PROFILE ACTIVE</p>
+      <StudentProfileContent student={student} />
+    </div>
+  );
+}
+function StudentProfileContent({
+  onClose,
+  student,
+}: {
+  onClose?: () => void;
+  student: StudentRecord;
+}) {
+  const timeline = getStudentProfileTimeline(student);
+  const sessionContexts = getStudentProfileSessionContexts(student);
+  const isSingleSessionProfile = sessionContexts.length === 1;
+  const primaryContext = sessionContexts[0] ?? null;
+
+  return (
+    <>
+      <header className="student-profile-header">
+        <div>
+          <span className="eyebrow">Student Profile</span>
+          <h2 id="student-profile-title">{student.fullName}</h2>
+          <p>{student.studentCode ? `Student code: ${student.studentCode}` : "No student code"}</p>
+          {isSingleSessionProfile && primaryContext && (
+            <dl className="student-profile-meta">
+              <div>
+                <dt>Session</dt>
+                <dd>{primaryContext.timeLabel}</dd>
+              </div>
+              <div>
+                <dt>Teacher</dt>
+                <dd>{primaryContext.teacherName}</dd>
+              </div>
+              <div>
+                <dt>Room</dt>
+                <dd>{primaryContext.room ?? "Room not set"}</dd>
+              </div>
+            </dl>
+          )}
+        </div>
+        {onClose && (
+          <button className="secondary" type="button" onClick={onClose} aria-label="Close student profile">
+            Close
+          </button>
+        )}
+      </header>
+
+      {!isSingleSessionProfile && (
+        <section className="student-profile-section">
+          <h3>Sessions</h3>
+          {sessionContexts.length === 0 ? (
+            <p className="muted">No current session information is available.</p>
           ) : (
-            <div className="attendance-history-list">
-              {enrollment.history.map((item) => (
-                <article className="attendance-history-row" key={item.lessonId}>
-                  <div>
-                    <strong>{formatDate(item.lessonDate)}</strong>
-                    <p>{item.className} · {item.timeLabel}</p>
-                    <p>{item.teacherName} · {item.room ?? "Room not set"}</p>
-                    {item.note.trim() && <p>Note: {item.note}</p>}
-                  </div>
-                  <span className={`status-pill ${item.attendanceStatus ? "success" : "warning"}`}>
-                    {formatAttendanceStatus(item.attendanceStatus)}
-                  </span>
-                </article>
+            <div className="student-profile-context-list">
+              {sessionContexts.map((context) => (
+                <div className="student-profile-context" key={context.key}>
+                  <strong>{context.className}</strong>
+                  <span>{context.timeLabel}</span>
+                  <span>{context.teacherName} · {context.room ?? "Room not set"}</span>
+                </div>
               ))}
             </div>
           )}
         </section>
-      ))}
-    </div>
+      )}
+
+      <section className="student-profile-section">
+        <h3>Summary</h3>
+        <div className="student-profile-summary">
+          <span>Attendance rate <strong>{getStudentAttendanceRateLabel(student.overallSummary)}</strong></span>
+          <span>Attended <strong>{student.overallSummary.present}</strong></span>
+          <span>Late <strong>{student.overallSummary.late}</strong></span>
+          <span>Absent <strong>{student.overallSummary.absent}</strong></span>
+          <span>Excused <strong>{student.overallSummary.excused}</strong></span>
+          <span>Total late minutes <strong>{student.overallSummary.lateMinutes}</strong></span>
+        </div>
+      </section>
+
+      <section className="student-profile-section">
+        <h3>Timeline</h3>
+        {timeline.length === 0 ? (
+          <p className="muted">No attendance history has been recorded yet.</p>
+        ) : (
+          <div className="student-timeline">
+            {timeline.map((item) => (
+              <article
+                className={isSingleSessionProfile ? "student-timeline-row" : "student-timeline-row with-context"}
+                key={`${item.lessonId}-${item.className}`}
+              >
+                <time dateTime={item.lessonDate}>{formatTimelineDate(item.lessonDate)}</time>
+                {!isSingleSessionProfile && (
+                  <span className="student-timeline-context">
+                    {getShortStudentTimelineContext(item)}
+                  </span>
+                )}
+                <span className={`status-pill ${getStudentTimelineStatusKind(item.attendanceStatus)}`}>
+                  {getTimelineStatusLabel(item)}
+                </span>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
   );
 }
 
-function AttendanceSummaryCards({ summary }: { summary: AttendanceSummary }) {
+function StudentProfileDrawer({
+  onClose,
+  student,
+}: {
+  onClose: () => void;
+  student: StudentRecord;
+}) {
   return (
-    <div className="attendance-summary-cards">
-      <span>Attended <strong>{summary.present}</strong></span>
-      <span>Late <strong>{summary.late}</strong></span>
-      <span>Absent <strong>{summary.absent}</strong></span>
-      <span>Excused <strong>{summary.excused}</strong></span>
-      <span>Total recorded <strong>{summary.recorded}</strong></span>
+    <div className="student-profile-overlay" role="presentation" onMouseDown={onClose}>
+      <aside
+        aria-labelledby="student-profile-title"
+        className="student-profile-drawer"
+        role="dialog"
+        aria-modal="true"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <StudentProfileContent student={student} onClose={onClose} />
+      </aside>
     </div>
   );
 }
-
 function RetroactiveAttendancePanel({
   actionLoading,
   onSaveRetroactiveAttendance,
+  onOpenStudentProfile,
   sessions,
 }: {
   actionLoading: boolean;
   onSaveRetroactiveAttendance: (lessonId: string, drafts: Record<string, RetroAttendanceDraft>) => Promise<void>;
+  onOpenStudentProfile: (studentId: string) => void;
   sessions: SummerSession[];
 }) {
   const [selectedClassId, setSelectedClassId] = useState("");
@@ -3020,7 +3137,13 @@ function RetroactiveAttendancePanel({
                   return (
                     <article className="retro-student-row" key={student.id}>
                       <div className="retro-student-identity">
-                        <strong>{student.fullName}</strong>
+                        <button
+                          className="student-name-button"
+                          type="button"
+                          onClick={() => onOpenStudentProfile(student.id)}
+                        >
+                          {student.fullName}
+                        </button>
                         <p>{student.studentCode ?? "No student code"}</p>
                         {student.attendanceId && <p>Editing existing attendance record.</p>}
                       </div>
@@ -3232,6 +3355,7 @@ function CoordinatorSessionRow({
   onSaveNote,
   onFinishSession,
   activityLogs,
+  onOpenStudentProfile,
   compact = false,
   showLessonDate = false,
 }: {
@@ -3241,6 +3365,7 @@ function CoordinatorSessionRow({
   onSaveNote: (item: SummerSession, body: string) => void;
   onFinishSession: (item: SummerSession) => void;
   activityLogs: ActivityLogRow[];
+  onOpenStudentProfile: (studentId: string) => void;
   compact?: boolean;
   showLessonDate?: boolean;
 }) {
@@ -3367,9 +3492,24 @@ function CoordinatorSessionRow({
               {counts.pending} pending / {item.students.length} total
             </p>
             <div className="roster-columns">
-              <RosterList title="Present students" students={presentStudents} emptyText="No present students marked." />
-              <RosterList title="Late students" students={lateStudents} emptyText="No late students marked." />
-              <RosterList title="Absent students" students={absentStudents} emptyText="No absent students." />
+              <RosterList
+                title="Present students"
+                students={presentStudents}
+                emptyText="No present students marked."
+                onOpenStudentProfile={onOpenStudentProfile}
+              />
+              <RosterList
+                title="Late students"
+                students={lateStudents}
+                emptyText="No late students marked."
+                onOpenStudentProfile={onOpenStudentProfile}
+              />
+              <RosterList
+                title="Absent students"
+                students={absentStudents}
+                emptyText="No absent students."
+                onOpenStudentProfile={onOpenStudentProfile}
+              />
             </div>
           </section>
 
@@ -3416,7 +3556,13 @@ function CoordinatorSessionRow({
                   {item.students.map((student) => (
                     <article className="student-row" key={student.id}>
                       <div>
-                        <h3>{student.fullName}</h3>
+                        <button
+                          className="student-name-button"
+                          type="button"
+                          onClick={() => onOpenStudentProfile(student.id)}
+                        >
+                          {student.fullName}
+                        </button>
                         <p>{student.birthYear ? `Birth year ${student.birthYear}` : "Birth year missing"}</p>
                       </div>
                       <div className="attendance-actions">
@@ -3448,10 +3594,12 @@ function RosterList({
   title,
   students,
   emptyText,
+  onOpenStudentProfile,
 }: {
   title: string;
   students: SessionStudent[];
   emptyText: string;
+  onOpenStudentProfile: (studentId: string) => void;
 }) {
   return (
     <div className="roster-column">
@@ -3461,7 +3609,15 @@ function RosterList({
       ) : (
         <ul className="compact-list">
           {students.map((student) => (
-            <li key={student.id}>{student.fullName}</li>
+            <li key={student.id}>
+              <button
+                className="inline-student-button"
+                type="button"
+                onClick={() => onOpenStudentProfile(student.id)}
+              >
+                {student.fullName}
+              </button>
+            </li>
           ))}
         </ul>
       )}
@@ -3670,6 +3826,7 @@ function TeacherDashboard({
   onFinishSession,
   onMarkAttendance,
   onSaveNote,
+  onOpenStudentProfile,
 }: {
   teacher: Teacher | null;
   sessions: SummerSession[];
@@ -3681,6 +3838,7 @@ function TeacherDashboard({
   onFinishSession: (item: SummerSession) => void;
   onMarkAttendance: (item: SummerSession, studentId: string, status: AttendanceStatus) => void;
   onSaveNote: (item: SummerSession, body: string) => void;
+  onOpenStudentProfile: (studentId: string) => void;
 }) {
   const [noteDraft, setNoteDraft] = useState("");
   const sessionHasStarted = Boolean(selectedSession?.startedAt);
@@ -3776,7 +3934,13 @@ function TeacherDashboard({
               {selectedSession.students.map((student) => (
                 <article className="student-row" key={student.id}>
                   <div>
-                    <h3>{student.fullName}</h3>
+                    <button
+                      className="student-name-button"
+                      type="button"
+                      onClick={() => onOpenStudentProfile(student.id)}
+                    >
+                      {student.fullName}
+                    </button>
                     <p>
                       {student.birthYear ? `Birth year ${student.birthYear}` : "Birth year missing"}
                       {student.phone ? ` · ${student.phone}` : ""}
@@ -4576,11 +4740,12 @@ function getStudentRecords(sessions: SummerSession[]) {
           teacherName: sessionItem.teacherName,
           room: sessionItem.location,
           attendanceStatus: student.attendanceStatus,
+          lateMinutes: getLateMinutes(student.attendanceArrivedAt, sessionItem.lessonDate, sessionItem.startsAt),
           note: sessionItem.note,
         };
         enrollment.history.push(historyItem);
-        addToAttendanceSummary(enrollment.summary, student.attendanceStatus);
-        addToAttendanceSummary(record.overallSummary, student.attendanceStatus);
+        addToAttendanceSummary(enrollment.summary, student.attendanceStatus, historyItem.lateMinutes);
+        addToAttendanceSummary(record.overallSummary, student.attendanceStatus, historyItem.lateMinutes);
       }
 
       studentMap.set(student.id, record);
@@ -4603,6 +4768,68 @@ function getStudentRecords(sessions: SummerSession[]) {
     if (nameCompare !== 0) return nameCompare;
     return (a.studentCode ?? "").localeCompare(b.studentCode ?? "");
   });
+}
+
+function getStudentProfileTimeline(student: StudentRecord) {
+  return student.enrollments
+    .flatMap((enrollment) => enrollment.history)
+    .sort((a, b) => {
+      const dateCompare = b.lessonDate.localeCompare(a.lessonDate);
+      if (dateCompare !== 0) return dateCompare;
+      return b.timeLabel.localeCompare(a.timeLabel);
+    });
+}
+
+function getStudentProfileSessionContexts(student: StudentRecord) {
+  const contextMap = new Map<
+    string,
+    {
+      key: string;
+      className: string;
+      teacherName: string;
+      room: string | null;
+      timeLabel: string;
+    }
+  >();
+
+  for (const enrollment of student.enrollments) {
+    const timeLabel = enrollment.sessionTimes.join(", ") || "Session time unavailable";
+    const key = `${enrollment.className}:${enrollment.teacherName}:${enrollment.room ?? ""}:${timeLabel}`;
+    if (contextMap.has(key)) continue;
+    contextMap.set(key, {
+      key,
+      className: enrollment.className,
+      teacherName: enrollment.teacherName,
+      room: enrollment.room,
+      timeLabel,
+    });
+  }
+
+  return Array.from(contextMap.values());
+}
+
+function getStudentAttendanceRateLabel(summary: AttendanceSummary) {
+  if (summary.recorded === 0) return "0%";
+  const attended = summary.present + summary.late + summary.excused;
+  return `${Math.round((attended / summary.recorded) * 100)}%`;
+}
+
+function getTimelineStatusLabel(item: StudentLessonHistoryItem) {
+  if (item.attendanceStatus === "late") {
+    return item.lateMinutes ? `${item.lateMinutes} min late` : "Late";
+  }
+  return formatAttendanceStatus(item.attendanceStatus);
+}
+
+function getShortStudentTimelineContext(item: StudentLessonHistoryItem) {
+  return `${item.timeLabel} · ${item.room ?? "Room not set"}`;
+}
+
+function getStudentTimelineStatusKind(status: AttendanceStatus | null) {
+  if (status === "absent") return "danger";
+  if (status === "late") return "warning";
+  if (status === "present" || status === "excused") return "success";
+  return "warning";
 }
 
 function getRetroSessionOptions(sessions: SummerSession[]) {
@@ -4660,16 +4887,31 @@ function createEmptyAttendanceSummary(): AttendanceSummary {
     absent: 0,
     excused: 0,
     recorded: 0,
+    lateMinutes: 0,
   };
 }
 
-function addToAttendanceSummary(summary: AttendanceSummary, status: AttendanceStatus | null) {
+function addToAttendanceSummary(summary: AttendanceSummary, status: AttendanceStatus | null, lateMinutes: number | null = null) {
   if (!status) return;
   summary.recorded += 1;
   if (status === "present") summary.present += 1;
-  if (status === "late") summary.late += 1;
+  if (status === "late") {
+    summary.late += 1;
+    summary.lateMinutes += lateMinutes ?? 0;
+  }
   if (status === "absent") summary.absent += 1;
   if (status === "excused") summary.excused += 1;
+}
+
+function getLateMinutes(arrivedAt: string | null, lessonDate: string, startsAt: string) {
+  if (!arrivedAt) return null;
+
+  const arrivedDate = new Date(arrivedAt);
+  const scheduledDate = new Date(`${lessonDate}T${startsAt}`);
+  const diffMinutes = Math.round((arrivedDate.getTime() - scheduledDate.getTime()) / 60_000);
+
+  if (!Number.isFinite(diffMinutes) || diffMinutes <= 0) return null;
+  return diffMinutes;
 }
 
 function hasLessonOccurred(item: SummerSession) {
@@ -5036,6 +5278,14 @@ function formatLessonDateWithWeekday(value: string) {
   return new Intl.DateTimeFormat("en", {
     weekday: "long",
     month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function formatTimelineDate(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
     day: "numeric",
     year: "numeric",
   }).format(new Date(value));
