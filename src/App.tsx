@@ -31,6 +31,26 @@ type UserProfile = {
   email: string;
   full_name: string;
   role: UserRole;
+  is_active: boolean;
+};
+
+type ManagedUser = UserProfile & {
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type ManagedUserCreateInput = {
+  fullName: string;
+  email: string;
+  role: UserRole;
+  temporaryPassword: string;
+  isActive: boolean;
+};
+
+type ManagedUserUpdateInput = {
+  role?: UserRole;
+  isActive?: boolean;
 };
 
 type Teacher = {
@@ -150,6 +170,9 @@ function App() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [stats, setStats] = useState<CoordinatorStats | null>(null);
   const [activityLogs, setActivityLogs] = useState<ActivityLogRow[]>([]);
+  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+  const [userManagementLoading, setUserManagementLoading] = useState(false);
+  const [userManagementMessage, setUserManagementMessage] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -160,7 +183,7 @@ function App() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
   const isCoordinator = useMemo(
-    () => profile?.role === "admin" || profile?.role === "staff",
+    () => Boolean(profile?.is_active && (profile.role === "admin" || profile.role === "staff")),
     [profile],
   );
 
@@ -194,6 +217,8 @@ function App() {
       setTeachers([]);
       setStats(null);
       setActivityLogs([]);
+      setManagedUsers([]);
+      setUserManagementMessage(null);
       return;
     }
 
@@ -247,7 +272,7 @@ function App() {
 
     const { data: userProfile, error: profileError } = await supabase
       .from("users")
-      .select("id, email, full_name, role")
+      .select("id, email, full_name, role, is_active")
       .eq("id", userId)
       .single();
 
@@ -258,10 +283,25 @@ function App() {
       return;
     }
 
+    if (!userProfile.is_active) {
+      await supabase.auth.signOut();
+      setError("This account is inactive. Please contact an administrator.");
+      setProfile(null);
+      setProfileLoading(false);
+      return;
+    }
+
     setProfile(userProfile);
 
     if (userProfile.role === "admin" || userProfile.role === "staff") {
       await loadCoordinatorDashboard();
+    }
+
+    if (userProfile.role === "admin") {
+      await loadManagedUsers();
+    } else {
+      setManagedUsers([]);
+      setUserManagementMessage(null);
     }
 
     if (userProfile.role === "teacher") {
@@ -518,7 +558,94 @@ function App() {
   async function refreshCurrentRoleData() {
     if (!profile) return;
     if (isCoordinator) await loadCoordinatorDashboard();
+    if (profile.role === "admin") await loadManagedUsers();
     if (profile.role === "teacher" && session?.user.id) await loadTeacherDashboard(session.user.id);
+  }
+
+  async function callUserManagementFunction(body: Record<string, unknown>) {
+    const { data, error: functionError } = await supabase.functions.invoke("manage-users", {
+      body,
+    });
+
+    if (functionError) {
+      console.error("[User management] Edge Function error", functionError);
+      const context = (functionError as { context?: unknown }).context;
+      if (context instanceof Response) {
+        const payload = await context
+          .clone()
+          .json()
+          .catch(() => null);
+        if (payload && typeof payload === "object" && "error" in payload) {
+          throw new Error(String((payload as { error: unknown }).error));
+        }
+      }
+      throw new Error(functionError.message || "User management request failed.");
+    }
+
+    if (data && typeof data === "object" && "error" in data) {
+      throw new Error(String((data as { error: unknown }).error));
+    }
+
+    return data as { users?: ManagedUser[]; user?: ManagedUser };
+  }
+
+  async function loadManagedUsers() {
+    setUserManagementLoading(true);
+    setUserManagementMessage(null);
+
+    try {
+      const data = await callUserManagementFunction({ action: "listUsers" });
+      setManagedUsers(data.users ?? []);
+    } catch (managementError) {
+      console.error("[User management] Could not load users", managementError);
+      setUserManagementMessage(getClientErrorMessage(managementError, "Could not load user management data."));
+    } finally {
+      setUserManagementLoading(false);
+    }
+  }
+
+  async function createManagedUser(input: ManagedUserCreateInput) {
+    setUserManagementLoading(true);
+    setUserManagementMessage(null);
+
+    try {
+      await callUserManagementFunction({
+        action: "createUser",
+        fullName: input.fullName,
+        email: input.email,
+        role: input.role,
+        temporaryPassword: input.temporaryPassword,
+        isActive: input.isActive,
+      });
+      await loadManagedUsers();
+      setUserManagementMessage("User created successfully.");
+    } catch (managementError) {
+      console.error("[User management] Could not create user", managementError);
+      setUserManagementMessage(getClientErrorMessage(managementError, "Could not create this user."));
+    } finally {
+      setUserManagementLoading(false);
+    }
+  }
+
+  async function updateManagedUser(userId: string, updates: ManagedUserUpdateInput) {
+    setUserManagementLoading(true);
+    setUserManagementMessage(null);
+
+    try {
+      await callUserManagementFunction({
+        action: "updateUser",
+        userId,
+        role: updates.role,
+        isActive: updates.isActive,
+      });
+      await loadManagedUsers();
+      setUserManagementMessage("User updated successfully.");
+    } catch (managementError) {
+      console.error("[User management] Could not update user", managementError);
+      setUserManagementMessage(getClientErrorMessage(managementError, "Could not update this user."));
+    } finally {
+      setUserManagementLoading(false);
+    }
   }
 
   async function startSession(item: SummerSession) {
@@ -1052,6 +1179,12 @@ function App() {
           onSaveNote={saveLessonNote}
           onFinishSession={finishSession}
           profile={profile}
+          managedUsers={managedUsers}
+          userManagementLoading={userManagementLoading}
+          userManagementMessage={userManagementMessage}
+          onCreateUser={createManagedUser}
+          onUpdateUser={updateManagedUser}
+          onRefreshUsers={loadManagedUsers}
         />
       )}
       {profile.role === "teacher" && (
@@ -1093,6 +1226,12 @@ function CoordinatorDashboard({
   onSaveNote,
   onFinishSession,
   profile,
+  managedUsers,
+  userManagementLoading,
+  userManagementMessage,
+  onCreateUser,
+  onUpdateUser,
+  onRefreshUsers,
 }: {
   stats: CoordinatorStats | null;
   teachers: Teacher[];
@@ -1103,6 +1242,12 @@ function CoordinatorDashboard({
   onSaveNote: (item: SummerSession, body: string) => void;
   onFinishSession: (item: SummerSession) => void;
   profile: UserProfile;
+  managedUsers: ManagedUser[];
+  userManagementLoading: boolean;
+  userManagementMessage: string | null;
+  onCreateUser: (input: ManagedUserCreateInput) => Promise<void>;
+  onUpdateUser: (userId: string, updates: ManagedUserUpdateInput) => Promise<void>;
+  onRefreshUsers: () => Promise<void>;
 }) {
   const [sessionSearch, setSessionSearch] = useState("");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("today");
@@ -1298,6 +1443,17 @@ function CoordinatorDashboard({
           </div>
         </summary>
         <div className="administration-body">
+          {profile.role === "admin" && (
+            <UserManagementPanel
+              currentUserId={profile.id}
+              users={managedUsers}
+              loading={userManagementLoading}
+              message={userManagementMessage}
+              onCreateUser={onCreateUser}
+              onUpdateUser={onUpdateUser}
+              onRefreshUsers={onRefreshUsers}
+            />
+          )}
           <div>
             <h4>Teacher Login Linking</h4>
             <p>
@@ -1319,6 +1475,159 @@ function CoordinatorDashboard({
           </div>
         </div>
       </details>
+    </section>
+  );
+}
+
+function UserManagementPanel({
+  currentUserId,
+  users,
+  loading,
+  message,
+  onCreateUser,
+  onUpdateUser,
+  onRefreshUsers,
+}: {
+  currentUserId: string;
+  users: ManagedUser[];
+  loading: boolean;
+  message: string | null;
+  onCreateUser: (input: ManagedUserCreateInput) => Promise<void>;
+  onUpdateUser: (userId: string, updates: ManagedUserUpdateInput) => Promise<void>;
+  onRefreshUsers: () => Promise<void>;
+}) {
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<UserRole>("teacher");
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [isActive, setIsActive] = useState(true);
+
+  const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await onCreateUser({
+      fullName,
+      email,
+      role,
+      temporaryPassword,
+      isActive,
+    });
+    setFullName("");
+    setEmail("");
+    setRole("teacher");
+    setTemporaryPassword("");
+    setIsActive(true);
+  };
+
+  return (
+    <section className="user-management-panel">
+      <div className="user-management-heading">
+        <div>
+          <h4>User Management</h4>
+          <p>Create logins and manage app profile access. Admin users only.</p>
+        </div>
+        <button className="secondary" type="button" onClick={() => void onRefreshUsers()} disabled={loading}>
+          Refresh
+        </button>
+      </div>
+
+      {message && <p className="management-message">{message}</p>}
+
+      <form className="user-management-form" onSubmit={handleCreate}>
+        <label>
+          Full name
+          <input
+            value={fullName}
+            onChange={(event) => setFullName(event.target.value)}
+            placeholder="Full name"
+            required
+          />
+        </label>
+        <label>
+          Email
+          <input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="name@example.com"
+            required
+          />
+        </label>
+        <label>
+          Role
+          <select value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
+            {(["admin", "staff", "teacher", "student"] as UserRole[]).map((item) => (
+              <option value={item} key={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Temporary password
+          <input
+            type="password"
+            value={temporaryPassword}
+            onChange={(event) => setTemporaryPassword(event.target.value)}
+            placeholder="At least 8 characters"
+            minLength={8}
+            required
+          />
+        </label>
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={isActive}
+            onChange={(event) => setIsActive(event.target.checked)}
+          />
+          Active
+        </label>
+        <button type="submit" disabled={loading}>
+          Create user
+        </button>
+      </form>
+
+      <div className="managed-user-list">
+        {users.length === 0 ? (
+          <p className="muted">No application users loaded yet.</p>
+        ) : (
+          users.map((item) => (
+            <article className="managed-user-row" key={item.id}>
+              <div>
+                <strong>{item.full_name}</strong>
+                <p>{item.email}</p>
+              </div>
+              <label>
+                Role
+                <select
+                  value={item.role}
+                  disabled={loading || item.id === currentUserId}
+                  onChange={(event) =>
+                    void onUpdateUser(item.id, { role: event.target.value as UserRole })
+                  }
+                >
+                  {(["admin", "staff", "teacher", "student"] as UserRole[]).map((roleValue) => (
+                    <option value={roleValue} key={roleValue}>
+                      {roleValue}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={item.is_active}
+                  disabled={loading || item.id === currentUserId}
+                  onChange={(event) => void onUpdateUser(item.id, { isActive: event.target.checked })}
+                />
+                Active
+              </label>
+              <span className={item.is_active ? "status-pill success" : "status-pill warning"}>
+                {item.is_active ? "Active" : "Inactive"}
+              </span>
+            </article>
+          ))
+        )}
+      </div>
     </section>
   );
 }
@@ -2122,6 +2431,14 @@ function getTurkeyTodayUtcRange() {
     startIso: startUtc.toISOString(),
     endIso: endUtc.toISOString(),
   };
+}
+
+function getClientErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return fallback;
 }
 
 function formatDate(value: string) {
