@@ -20,6 +20,7 @@ type AdminTab =
   | "overview"
   | "user-management"
   | "teacher-linking"
+  | "reports"
   | "student-records"
   | "retroactive-attendance"
   | "teachers"
@@ -242,6 +243,43 @@ type AttendanceSummary = {
   absent: number;
   excused: number;
   recorded: number;
+};
+
+type DailyReportSessionRow = {
+  lessonId: string;
+  timeLabel: string;
+  teacherName: string;
+  className: string;
+  roomContext: string;
+  expected: number;
+  present: number;
+  late: number;
+  absent: number;
+  completed: boolean;
+};
+
+type DailyReportTeacherRow = {
+  teacherId: string;
+  teacherName: string;
+  scheduledSessions: number;
+  attendanceCompleted: number;
+  attendanceMissing: number;
+  present: number;
+  late: number;
+  absent: number;
+};
+
+type DailyAttendanceReport = {
+  date: string;
+  totalScheduledSessions: number;
+  sessionsWithAttendanceRecorded: number;
+  sessionsWithNoAttendanceRecorded: number;
+  totalStudentsExpected: number;
+  present: number;
+  late: number;
+  absent: number;
+  sessionRows: DailyReportSessionRow[];
+  teacherRows: DailyReportTeacherRow[];
 };
 
 type RetroAttendanceDraft = {
@@ -1684,6 +1722,7 @@ function CoordinatorDashboard({
   const [studentSearch, setStudentSearch] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("today");
+  const [reportDate, setReportDate] = useState(() => getTodayDate());
   const isAdmin = isAdminProfile(profile);
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>(() => getInitialAdminTab(isAdmin));
   const linkedTeachers = teachers.filter((item) => item.user_id);
@@ -1957,6 +1996,14 @@ function CoordinatorDashboard({
               />
             </div>
 
+            <div hidden={activeAdminTab !== "reports"}>
+              <ReportsPanel
+                reportDate={reportDate}
+                sessions={sessions}
+                onReportDateChange={setReportDate}
+              />
+            </div>
+
             <div hidden={activeAdminTab !== "student-records"}>
               <StudentRecordsPanel
                 searchValue={studentSearch}
@@ -2172,6 +2219,306 @@ function TeacherLoginLinkingPanel({
         </form>
       )}
     </section>
+  );
+}
+
+function ReportsPanel({
+  onReportDateChange,
+  reportDate,
+  sessions,
+}: {
+  onReportDateChange: (value: string) => void;
+  reportDate: string;
+  sessions: SummerSession[];
+}) {
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [printReport, setPrintReport] = useState<{
+    generatedAt: Date;
+    report: DailyAttendanceReport;
+  } | null>(null);
+  const report = getDailyAttendanceReport(sessions, reportDate);
+  const canExport = report.totalScheduledSessions > 0;
+
+  useEffect(() => {
+    if (!printReport) return;
+
+    let fallbackTimeout: number | null = null;
+    const finishPrint = () => {
+      if (fallbackTimeout) window.clearTimeout(fallbackTimeout);
+      setPrintReport(null);
+    };
+
+    window.addEventListener("afterprint", finishPrint, { once: true });
+    const printTimeout = window.setTimeout(() => {
+      window.print();
+      fallbackTimeout = window.setTimeout(finishPrint, 1500);
+    }, 80);
+
+    return () => {
+      window.clearTimeout(printTimeout);
+      if (fallbackTimeout) window.clearTimeout(fallbackTimeout);
+      window.removeEventListener("afterprint", finishPrint);
+    };
+  }, [printReport]);
+
+  const handleCsvExport = () => {
+    setExportError(null);
+    try {
+      exportDailyReportCsv(report);
+    } catch (error) {
+      console.error("[Reports] CSV export failed", error);
+      setExportError("Could not export the CSV report. Please try again.");
+    }
+  };
+
+  const handleExcelExport = async () => {
+    setExportError(null);
+    try {
+      await exportDailyReportExcel(report);
+    } catch (error) {
+      console.error("[Reports] Excel export failed", error);
+      setExportError("Could not export the Excel report. Please try again.");
+    }
+  };
+
+  const handlePrintReport = () => {
+    setExportError(null);
+    try {
+      setPrintReport({ generatedAt: new Date(), report });
+    } catch (error) {
+      console.error("[Reports] Print preparation failed", error);
+      setExportError("Could not prepare the printable report. Please try again.");
+    }
+  };
+
+  return (
+    <section className="admin-records-panel reports-panel">
+      <div className="admin-records-heading">
+        <div>
+          <h4>Reports</h4>
+          <p>Daily attendance summary for {formatLessonDateWithWeekday(report.date)}</p>
+        </div>
+        <label className="search-field compact-search">
+          <span>Select report date</span>
+          <input
+            type="date"
+            value={reportDate}
+            onChange={(event) => onReportDateChange(event.target.value || getTodayDate())}
+          />
+        </label>
+      </div>
+
+      <div className="reports-summary-grid">
+        <StatCard label="Scheduled Sessions" value={report.totalScheduledSessions} />
+        <StatCard label="Attendance Recorded" value={report.sessionsWithAttendanceRecorded} />
+        <StatCard label="No Attendance" value={report.sessionsWithNoAttendanceRecorded} />
+        <StatCard label="Students Expected" value={report.totalStudentsExpected} />
+        <StatCard label="Present" value={report.present} />
+        <StatCard label="Late" value={report.late} />
+        <StatCard label="Absent" value={report.absent} />
+      </div>
+
+      <div className="report-export-actions">
+        <div>
+          <h5>Export</h5>
+          <p>Download the currently selected daily report.</p>
+        </div>
+        <div className="report-export-buttons">
+          <button className="secondary" type="button" onClick={handleCsvExport} disabled={!canExport}>
+            Export CSV
+          </button>
+          <button className="secondary" type="button" onClick={() => void handleExcelExport()} disabled={!canExport}>
+            Export Excel
+          </button>
+          <button className="secondary" type="button" onClick={handlePrintReport} disabled={!canExport}>
+            Print / Save PDF
+          </button>
+        </div>
+        {exportError && <p className="error">{exportError}</p>}
+      </div>
+
+      {printReport && (
+        <PrintableAttendanceReport report={printReport.report} generatedAt={printReport.generatedAt} />
+      )}
+
+      <section className="report-section">
+        <div>
+          <h5>Session Breakdown</h5>
+          <p>{report.sessionRows.length} sessions on this date</p>
+        </div>
+        {report.sessionRows.length === 0 ? (
+          <p className="muted">No scheduled sessions found for this date.</p>
+        ) : (
+          <div className="report-table">
+            <div className="report-row report-row-header">
+              <span>Time</span>
+              <span>Teacher</span>
+              <span>Session</span>
+              <span>Room</span>
+              <span>Expected</span>
+              <span>Present</span>
+              <span>Late</span>
+              <span>Absent</span>
+              <span>Status</span>
+            </div>
+            {report.sessionRows.map((item) => (
+              <div className="report-row" key={item.lessonId}>
+                <span>{item.timeLabel}</span>
+                <strong>{item.teacherName}</strong>
+                <span>{item.className}</span>
+                <span>{item.roomContext}</span>
+                <span>{item.expected}</span>
+                <span>{item.present}</span>
+                <span>{item.late}</span>
+                <span>{item.absent}</span>
+                <span className={item.completed ? "status-pill success" : "status-pill warning"}>
+                  {item.completed ? "Completed" : "Missing"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="report-section">
+        <div>
+          <h5>Teacher Breakdown</h5>
+          <p>{report.teacherRows.length} teachers scheduled on this date</p>
+        </div>
+        {report.teacherRows.length === 0 ? (
+          <p className="muted">No teacher sessions found for this date.</p>
+        ) : (
+          <div className="report-table teacher-report-table">
+            <div className="report-row report-row-header">
+              <span>Teacher</span>
+              <span>Sessions</span>
+              <span>Completed</span>
+              <span>Missing</span>
+              <span>Present</span>
+              <span>Late</span>
+              <span>Absent</span>
+            </div>
+            {report.teacherRows.map((item) => (
+              <div className="report-row" key={item.teacherId}>
+                <strong>{item.teacherName}</strong>
+                <span>{item.scheduledSessions}</span>
+                <span>{item.attendanceCompleted}</span>
+                <span>{item.attendanceMissing}</span>
+                <span>{item.present}</span>
+                <span>{item.late}</span>
+                <span>{item.absent}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function PrintableAttendanceReport({
+  generatedAt,
+  report,
+}: {
+  generatedAt: Date;
+  report: DailyAttendanceReport;
+}) {
+  return (
+    <article className="printable-report" aria-label="Printable daily attendance report">
+      <header className="print-report-header">
+        <p>Sancaktepe American Life Yabancı Dil Kursu</p>
+        <h1>Daily Attendance Report</h1>
+        <div>
+          <span>Report date: {formatLessonDateWithWeekday(report.date)}</span>
+          <span>Generated: {formatPrintDateTime(generatedAt)}</span>
+        </div>
+      </header>
+
+      <section className="print-report-section" aria-labelledby="print-summary-heading">
+        <h2 id="print-summary-heading">Daily Summary</h2>
+        <table>
+          <tbody>
+            <tr><th scope="row">Scheduled Sessions</th><td>{report.totalScheduledSessions}</td></tr>
+            <tr><th scope="row">Attendance Recorded</th><td>{report.sessionsWithAttendanceRecorded}</td></tr>
+            <tr><th scope="row">No Attendance</th><td>{report.sessionsWithNoAttendanceRecorded}</td></tr>
+            <tr><th scope="row">Students Expected</th><td>{report.totalStudentsExpected}</td></tr>
+            <tr><th scope="row">Present</th><td>{report.present}</td></tr>
+            <tr><th scope="row">Late</th><td>{report.late}</td></tr>
+            <tr><th scope="row">Absent</th><td>{report.absent}</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section className="print-report-section" aria-labelledby="print-session-heading">
+        <h2 id="print-session-heading">Session Breakdown</h2>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Time</th>
+              <th scope="col">Teacher</th>
+              <th scope="col">Class / Session</th>
+              <th scope="col">Room</th>
+              <th scope="col">Expected</th>
+              <th scope="col">Present</th>
+              <th scope="col">Late</th>
+              <th scope="col">Absent</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.sessionRows.map((item) => (
+              <tr key={item.lessonId}>
+                <td>{item.timeLabel}</td>
+                <td>{item.teacherName}</td>
+                <td>{item.className}</td>
+                <td>{item.roomContext}</td>
+                <td>{item.expected}</td>
+                <td>{item.present}</td>
+                <td>{item.late}</td>
+                <td>{item.absent}</td>
+                <td>{item.completed ? "Completed" : "Missing"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="print-report-section" aria-labelledby="print-teacher-heading">
+        <h2 id="print-teacher-heading">Teacher Breakdown</h2>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Teacher</th>
+              <th scope="col">Scheduled Sessions</th>
+              <th scope="col">Attendance Completed</th>
+              <th scope="col">Attendance Missing</th>
+              <th scope="col">Present</th>
+              <th scope="col">Late</th>
+              <th scope="col">Absent</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.teacherRows.map((item) => (
+              <tr key={item.teacherId}>
+                <td>{item.teacherName}</td>
+                <td>{item.scheduledSessions}</td>
+                <td>{item.attendanceCompleted}</td>
+                <td>{item.attendanceMissing}</td>
+                <td>{item.present}</td>
+                <td>{item.late}</td>
+                <td>{item.absent}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <footer className="print-report-footer">
+        <div>
+          <span>Education Coordinator</span>
+        </div>
+      </footer>
+    </article>
   );
 }
 
@@ -3603,6 +3950,7 @@ function getAdministrationTabs(isAdmin: boolean): Array<{ id: AdminTab; label: s
     { id: "overview", label: "Overview" },
     ...(isAdmin ? [{ id: "user-management" as AdminTab, label: "User Management" }] : []),
     { id: "teacher-linking", label: "Teacher Login Linking" },
+    { id: "reports", label: "Reports" },
     { id: "student-records", label: "Student Records" },
     { id: "retroactive-attendance", label: "Retroactive Attendance" },
     { id: "teachers", label: "Teachers" },
@@ -3624,6 +3972,7 @@ function normalizeAdminTab(value: string | null): AdminTab | null {
     value === "overview" ||
     value === "user-management" ||
     value === "teacher-linking" ||
+    value === "reports" ||
     value === "student-records" ||
     value === "retroactive-attendance" ||
     value === "teachers" ||
@@ -3687,6 +4036,474 @@ function getRoomRecords(sessions: SummerSession[]) {
   }
 
   return Array.from(roomMap.values()).sort((a, b) => a.roomName.localeCompare(b.roomName));
+}
+
+function getDailyAttendanceReport(sessions: SummerSession[], date: string): DailyAttendanceReport {
+  const sessionRows = sessions
+    .filter((item) => item.lessonDate === date)
+    .sort((a, b) => {
+      const timeCompare = a.startsAt.localeCompare(b.startsAt);
+      if (timeCompare !== 0) return timeCompare;
+      return a.teacherName.localeCompare(b.teacherName);
+    })
+    .map((item) => {
+      const counts = getAttendanceCounts(item);
+      return {
+        lessonId: item.id,
+        timeLabel: `${formatTime(item.startsAt)}-${formatTime(item.endsAt)}`,
+        teacherName: item.teacherName,
+        className: item.className,
+        roomContext: item.location ?? "Room not set",
+        expected: item.students.length,
+        present: counts.present,
+        late: counts.late,
+        absent: counts.absent,
+        completed: hasCompletedAttendance(item),
+      };
+    });
+
+  const teacherMap = new Map<string, DailyReportTeacherRow>();
+  for (const row of sessionRows) {
+    const session = sessions.find((item) => item.id === row.lessonId);
+    const teacherId = session?.teacherId ?? `unassigned-${row.teacherName}`;
+    const teacherRow = teacherMap.get(teacherId) ?? {
+      teacherId,
+      teacherName: row.teacherName,
+      scheduledSessions: 0,
+      attendanceCompleted: 0,
+      attendanceMissing: 0,
+      present: 0,
+      late: 0,
+      absent: 0,
+    };
+
+    teacherRow.scheduledSessions += 1;
+    teacherRow.attendanceCompleted += row.completed ? 1 : 0;
+    teacherRow.attendanceMissing += row.completed ? 0 : 1;
+    teacherRow.present += row.present;
+    teacherRow.late += row.late;
+    teacherRow.absent += row.absent;
+    teacherMap.set(teacherId, teacherRow);
+  }
+
+  const sessionsWithAttendanceRecorded = sessions.filter(
+    (item) => item.lessonDate === date && hasAnyAttendanceRecorded(item),
+  ).length;
+
+  return {
+    date,
+    totalScheduledSessions: sessionRows.length,
+    sessionsWithAttendanceRecorded,
+    sessionsWithNoAttendanceRecorded: sessionRows.length - sessionsWithAttendanceRecorded,
+    totalStudentsExpected: sessionRows.reduce((total, item) => total + item.expected, 0),
+    present: sessionRows.reduce((total, item) => total + item.present, 0),
+    late: sessionRows.reduce((total, item) => total + item.late, 0),
+    absent: sessionRows.reduce((total, item) => total + item.absent, 0),
+    sessionRows,
+    teacherRows: Array.from(teacherMap.values()).sort((a, b) => a.teacherName.localeCompare(b.teacherName)),
+  };
+}
+
+function exportDailyReportCsv(report: DailyAttendanceReport) {
+  const rows: string[][] = [
+    ["Daily Attendance Report"],
+    ["Report date", formatLessonDateWithWeekday(report.date)],
+    [],
+    ["Summary"],
+    ["Scheduled Sessions", String(report.totalScheduledSessions)],
+    ["Attendance Recorded", String(report.sessionsWithAttendanceRecorded)],
+    ["No Attendance", String(report.sessionsWithNoAttendanceRecorded)],
+    ["Students Expected", String(report.totalStudentsExpected)],
+    ["Present", String(report.present)],
+    ["Late", String(report.late)],
+    ["Absent", String(report.absent)],
+    [],
+    ["Session Breakdown"],
+    ["Session Time", "Teacher", "Class / Session", "Room / Context", "Expected Students", "Present", "Late", "Absent", "Attendance Status"],
+    ...report.sessionRows.map((item) => [
+      item.timeLabel,
+      item.teacherName,
+      item.className,
+      item.roomContext,
+      String(item.expected),
+      String(item.present),
+      String(item.late),
+      String(item.absent),
+      item.completed ? "Completed" : "Missing",
+    ]),
+    [],
+    ["Teacher Breakdown"],
+    ["Teacher", "Scheduled Sessions", "Attendance Completed", "Attendance Missing", "Present", "Late", "Absent"],
+    ...report.teacherRows.map((item) => [
+      item.teacherName,
+      String(item.scheduledSessions),
+      String(item.attendanceCompleted),
+      String(item.attendanceMissing),
+      String(item.present),
+      String(item.late),
+      String(item.absent),
+    ]),
+  ];
+  const csv = `\uFEFF${rows.map((row) => row.map(escapeCsvCell).join(";")).join("\r\n")}`;
+  downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), getReportFileName(report.date, "csv"));
+}
+
+async function exportDailyReportExcel(report: DailyAttendanceReport) {
+  const sheets = [
+    createWorksheetXml({
+      name: "Daily Summary",
+      rows: [
+        ["Daily Attendance Report"],
+        ["Report date", formatLessonDateWithWeekday(report.date)],
+        [],
+        ["Metric", "Value"],
+        ["Scheduled Sessions", report.totalScheduledSessions],
+        ["Attendance Recorded", report.sessionsWithAttendanceRecorded],
+        ["No Attendance", report.sessionsWithNoAttendanceRecorded],
+        ["Students Expected", report.totalStudentsExpected],
+        ["Present", report.present],
+        ["Late", report.late],
+        ["Absent", report.absent],
+      ],
+      boldRows: new Set([1, 4]),
+      columnWidths: [26, 18],
+    }),
+    createWorksheetXml({
+      name: "Session Breakdown",
+      rows: [
+        ["Session Time", "Teacher", "Class / Session", "Room / Context", "Expected Students", "Present", "Late", "Absent", "Attendance Status"],
+        ...report.sessionRows.map((item) => [
+          item.timeLabel,
+          item.teacherName,
+          item.className,
+          item.roomContext,
+          item.expected,
+          item.present,
+          item.late,
+          item.absent,
+          item.completed ? "Completed" : "Missing",
+        ]),
+      ],
+      boldRows: new Set([1]),
+      freezeHeader: true,
+      autoFilter: true,
+      columnWidths: [16, 22, 34, 18, 18, 12, 12, 12, 20],
+    }),
+    createWorksheetXml({
+      name: "Teacher Breakdown",
+      rows: [
+        ["Teacher", "Scheduled Sessions", "Attendance Completed", "Attendance Missing", "Present", "Late", "Absent"],
+        ...report.teacherRows.map((item) => [
+          item.teacherName,
+          item.scheduledSessions,
+          item.attendanceCompleted,
+          item.attendanceMissing,
+          item.present,
+          item.late,
+          item.absent,
+        ]),
+      ],
+      boldRows: new Set([1]),
+      freezeHeader: true,
+      autoFilter: true,
+      columnWidths: [24, 20, 22, 20, 12, 12, 12],
+    }),
+  ];
+
+  const blob = createXlsxWorkbook(sheets);
+  downloadBlob(blob, getReportFileName(report.date, "xlsx"));
+}
+
+function escapeCsvCell(value: string) {
+  if (/[;"\r\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function getReportFileName(date: string, extension: "csv" | "xlsx") {
+  return `attendance-report-${date}.${extension}`;
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+type WorksheetDefinition = {
+  name: string;
+  xml: string;
+};
+
+function createWorksheetXml({
+  autoFilter = false,
+  boldRows,
+  columnWidths,
+  freezeHeader = false,
+  name,
+  rows,
+}: {
+  autoFilter?: boolean;
+  boldRows: Set<number>;
+  columnWidths: number[];
+  freezeHeader?: boolean;
+  name: string;
+  rows: Array<Array<string | number>>;
+}): WorksheetDefinition {
+  const lastColumn = getExcelColumnName(Math.max(...rows.map((row) => row.length), 1));
+  const lastRow = Math.max(rows.length, 1);
+  const columnXml = columnWidths.length
+    ? `<cols>${columnWidths
+        .map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`)
+        .join("")}</cols>`
+    : "";
+  const sheetViews = freezeHeader
+    ? '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+    : "";
+  const sheetRows = rows
+    .map((row, rowIndex) => {
+      const rowNumber = rowIndex + 1;
+      const cells = row
+        .map((value, columnIndex) => createCellXml(value, `${getExcelColumnName(columnIndex + 1)}${rowNumber}`, boldRows.has(rowNumber)))
+        .join("");
+      return `<row r="${rowNumber}">${cells}</row>`;
+    })
+    .join("");
+  const autoFilterXml = autoFilter && rows.length > 0 ? `<autoFilter ref="A1:${lastColumn}${lastRow}"/>` : "";
+
+  return {
+    name,
+    xml:
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      sheetViews +
+      columnXml +
+      `<sheetData>${sheetRows}</sheetData>` +
+      autoFilterXml +
+      "</worksheet>",
+  };
+}
+
+function createCellXml(value: string | number, ref: string, bold: boolean) {
+  const style = bold ? ' s="1"' : "";
+  if (typeof value === "number") {
+    return `<c r="${ref}"${style}><v>${value}</v></c>`;
+  }
+  return `<c r="${ref}" t="inlineStr"${style}><is><t>${escapeXml(value)}</t></is></c>`;
+}
+
+function createXlsxWorkbook(sheets: WorksheetDefinition[]) {
+  const files: Array<{ name: string; data: Uint8Array }> = [
+    { name: "[Content_Types].xml", data: encodeUtf8(createContentTypesXml(sheets.length)) },
+    { name: "_rels/.rels", data: encodeUtf8(createPackageRelsXml()) },
+    { name: "xl/workbook.xml", data: encodeUtf8(createWorkbookXml(sheets)) },
+    { name: "xl/_rels/workbook.xml.rels", data: encodeUtf8(createWorkbookRelsXml(sheets.length)) },
+    { name: "xl/styles.xml", data: encodeUtf8(createStylesXml()) },
+    ...sheets.map((sheet, index) => ({
+      name: `xl/worksheets/sheet${index + 1}.xml`,
+      data: encodeUtf8(sheet.xml),
+    })),
+  ];
+
+  return new Blob([createZip(files)], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+}
+
+function createContentTypesXml(sheetCount: number) {
+  const worksheets = Array.from(
+    { length: sheetCount },
+    (_, index) =>
+      `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+  ).join("");
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+    worksheets +
+    "</Types>"
+  );
+}
+
+function createPackageRelsXml() {
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+    "</Relationships>"
+  );
+}
+
+function createWorkbookXml(sheets: WorksheetDefinition[]) {
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    "<sheets>" +
+    sheets
+      .map((sheet, index) => `<sheet name="${escapeXmlAttribute(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`)
+      .join("") +
+    "</sheets></workbook>"
+  );
+}
+
+function createWorkbookRelsXml(sheetCount: number) {
+  const worksheetRels = Array.from(
+    { length: sheetCount },
+    (_, index) =>
+      `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`,
+  ).join("");
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    worksheetRels +
+    `<Relationship Id="rId${sheetCount + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>` +
+    "</Relationships>"
+  );
+}
+
+function createStylesXml() {
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>' +
+    '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>' +
+    '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+    '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>' +
+    "</styleSheet>"
+  );
+}
+
+function createZip(files: Array<{ name: string; data: Uint8Array }>) {
+  const chunks: Uint8Array[] = [];
+  const centralDirectory: Uint8Array[] = [];
+  let offset = 0;
+  const { date, time } = getZipDateTime(new Date());
+
+  for (const file of files) {
+    const nameBytes = encodeUtf8(file.name);
+    const crc = getCrc32(file.data);
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const localView = new DataView(localHeader.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0, true);
+    localView.setUint16(8, 0, true);
+    localView.setUint16(10, time, true);
+    localView.setUint16(12, date, true);
+    localView.setUint32(14, crc, true);
+    localView.setUint32(18, file.data.length, true);
+    localView.setUint32(22, file.data.length, true);
+    localView.setUint16(26, nameBytes.length, true);
+    localHeader.set(nameBytes, 30);
+    chunks.push(localHeader, file.data);
+
+    const centralHeader = new Uint8Array(46 + nameBytes.length);
+    const centralView = new DataView(centralHeader.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0, true);
+    centralView.setUint16(10, 0, true);
+    centralView.setUint16(12, time, true);
+    centralView.setUint16(14, date, true);
+    centralView.setUint32(16, crc, true);
+    centralView.setUint32(20, file.data.length, true);
+    centralView.setUint32(24, file.data.length, true);
+    centralView.setUint16(28, nameBytes.length, true);
+    centralView.setUint32(42, offset, true);
+    centralHeader.set(nameBytes, 46);
+    centralDirectory.push(centralHeader);
+    offset += localHeader.length + file.data.length;
+  }
+
+  const centralStart = offset;
+  const centralSize = centralDirectory.reduce((total, chunk) => total + chunk.length, 0);
+  const endRecord = new Uint8Array(22);
+  const endView = new DataView(endRecord.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, centralStart, true);
+
+  return concatenateUint8Arrays([...chunks, ...centralDirectory, endRecord]);
+}
+
+function getZipDateTime(value: Date) {
+  const time = (value.getHours() << 11) | (value.getMinutes() << 5) | Math.floor(value.getSeconds() / 2);
+  const date = ((value.getFullYear() - 1980) << 9) | ((value.getMonth() + 1) << 5) | value.getDate();
+  return { date, time };
+}
+
+function getCrc32(data: Uint8Array) {
+  const table = getCrc32Table();
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc = (crc >>> 8) ^ table[(crc ^ byte) & 0xff];
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+let crc32Table: Uint32Array | null = null;
+
+function getCrc32Table() {
+  if (crc32Table) return crc32Table;
+  crc32Table = new Uint32Array(256);
+  for (let index = 0; index < 256; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    crc32Table[index] = value >>> 0;
+  }
+  return crc32Table;
+}
+
+function concatenateUint8Arrays(chunks: Uint8Array[]) {
+  const totalLength = chunks.reduce((total, chunk) => total + chunk.length, 0);
+  const output = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return output;
+}
+
+function encodeUtf8(value: string) {
+  return new TextEncoder().encode(value);
+}
+
+function getExcelColumnName(columnNumber: number) {
+  let name = "";
+  let value = columnNumber;
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    name = String.fromCharCode(65 + remainder) + name;
+    value = Math.floor((value - 1) / 26);
+  }
+  return name;
+}
+
+function escapeXml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeXmlAttribute(value: string) {
+  return escapeXml(value).replace(/"/g, "&quot;");
 }
 
 function getSessionClassRecords(sessions: SummerSession[]) {
@@ -3872,6 +4689,10 @@ function formatAttendanceStatus(status: AttendanceStatus | null) {
 
 function hasCompletedAttendance(item: SummerSession) {
   return item.students.length > 0 && item.students.every((student) => student.attendanceStatus);
+}
+
+function hasAnyAttendanceRecorded(item: SummerSession) {
+  return item.students.some((student) => student.attendanceStatus);
 }
 
 function getAttendanceCounts(item: SummerSession) {
@@ -4243,6 +5064,16 @@ function formatActivityTimestamp(value: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatPrintDateTime(value: Date) {
+  return new Intl.DateTimeFormat("en", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
 }
 
 function getTeacherPresenceStatus(lastActiveAt: string | null, nowMs = Date.now()) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "american-life-summer-school-v1";
+const CACHE_NAME = "american-life-campus-portal-v2";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -60,10 +60,8 @@ self.addEventListener("fetch", (event) => {
   if (!isCacheableAsset) return;
 
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      if (cachedResponse) return cachedResponse;
-
-      return fetch(request).then((response) => {
+    fetch(request)
+      .then((response) => {
         if (response.ok) {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -71,7 +69,7 @@ self.addEventListener("fetch", (event) => {
           });
         }
         return response;
-      });
-    })
+      })
+      .catch(() => caches.match(request))
   );
 });
