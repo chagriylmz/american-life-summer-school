@@ -294,7 +294,7 @@ function App() {
 
     setProfile(userProfile);
 
-    if (userProfile.role === "admin" || userProfile.role === "staff") {
+    if (isCoordinatorProfile(userProfile)) {
       await loadCoordinatorDashboard();
     }
 
