@@ -1656,6 +1656,8 @@ function CoordinatorDashboard({
   const notesSubmitted = todaySessions.filter((item) => item.note.trim().length > 0).length;
   const alerts = getCoordinatorAlerts(todaySessions);
   const historySessions = getHistorySessions(sessions, historyFilter);
+  const historyDateContext = getHistoryDateContext(historySessions);
+  const showHistoryDateOnCards = historyDateContext.kind === "multiple";
   const firstName = getFirstName(profile.full_name);
   const administrationTabs = useMemo(() => getAdministrationTabs(isAdmin), [isAdmin]);
 
@@ -1764,6 +1766,9 @@ function CoordinatorDashboard({
           <div className="section-heading compact">
             <h3>Session History</h3>
             <p>{historySessions.length} sessions in view</p>
+            {historyDateContext.kind === "single" && (
+              <p className="history-date-context">Showing sessions for {historyDateContext.label}</p>
+            )}
           </div>
           <div className="history-filter" aria-label="Session history filters">
             {([
@@ -1799,6 +1804,7 @@ function CoordinatorDashboard({
                 onSaveNote={onSaveNote}
                 activityLogs={activityLogs}
                 compact
+                showLessonDate={showHistoryDateOnCards}
               />
             ))}
           </div>
@@ -2785,6 +2791,7 @@ function CoordinatorSessionRow({
   onFinishSession,
   activityLogs,
   compact = false,
+  showLessonDate = false,
 }: {
   item: SummerSession;
   actionLoading: boolean;
@@ -2793,6 +2800,7 @@ function CoordinatorSessionRow({
   onFinishSession: (item: SummerSession) => void;
   activityLogs: ActivityLogRow[];
   compact?: boolean;
+  showLessonDate?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editingEnabled, setEditingEnabled] = useState(false);
@@ -2845,6 +2853,13 @@ function CoordinatorSessionRow({
           <span className="eyebrow">Room</span>
           <strong>{item.location ?? "Room not set"}</strong>
         </div>
+        {showLessonDate && (
+          <div className="session-info-block session-date-block">
+            <span className="session-info-icon" aria-hidden="true">Date</span>
+            <span className="eyebrow">Date</span>
+            <strong>{formatLessonDateWithWeekday(item.lessonDate)}</strong>
+          </div>
+        )}
         <div className="status-badges">
           <span className={`status-badge ${lifecycle.kind}`}>{lifecycle.label}</span>
           <span className={`status-badge ${attendanceDone ? "success" : "warning"}`}>
@@ -3717,6 +3732,20 @@ function getHistorySessions(sessions: SummerSession[], filter: HistoryFilter) {
     if (dateCompare !== 0) return dateCompare;
     return `${a.startsAt}-${a.teacherName}`.localeCompare(`${b.startsAt}-${b.teacherName}`);
   });
+}
+
+function getHistoryDateContext(sessions: SummerSession[]) {
+  const lessonDates = [...new Set(sessions.map((item) => item.lessonDate))];
+  if (lessonDates.length === 1) {
+    return {
+      kind: "single" as const,
+      label: formatLessonDateWithWeekday(lessonDates[0]),
+    };
+  }
+
+  return {
+    kind: lessonDates.length > 1 ? ("multiple" as const) : ("none" as const),
+  };
 }
 
 function getWeekStartDate(dateValue: string) {

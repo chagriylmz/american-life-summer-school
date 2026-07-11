@@ -725,6 +725,27 @@ select:focus {
   font-size: 1rem;
 }
 
+.session-date-block {
+  border-color: rgba(20, 130, 208, 0.22);
+  background: #edf6ff;
+}
+
+.session-date-block strong {
+  color: var(--navy);
+}
+
+.history-date-context {
+  display: inline-flex;
+  margin-top: 8px;
+  border: 1px solid rgba(20, 130, 208, 0.22);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: var(--navy);
+  background: #edf6ff;
+  font-size: 0.88rem;
+  font-weight: 850;
+}
+
 .session-card-actions {
   display: flex;
   justify-content: flex-start;
