@@ -16,6 +16,15 @@ type ActivityActionType =
   | "lesson_note_saved"
   | "session_finished"
   | "late_entry_updated";
+type AdminTab =
+  | "overview"
+  | "user-management"
+  | "teacher-linking"
+  | "student-records"
+  | "retroactive-attendance"
+  | "teachers"
+  | "rooms"
+  | "sessions-classes";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -1601,6 +1610,8 @@ function CoordinatorDashboard({
   const [studentSearch, setStudentSearch] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("today");
+  const isAdmin = isAdminProfile(profile);
+  const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>(() => getInitialAdminTab(isAdmin));
   const linkedTeachers = teachers.filter((item) => item.user_id);
   const sessionById = new Map(sessions.map((item) => [item.id, item]));
   const teacherById = new Map(teachers.map((item) => [item.id, item]));
@@ -1646,6 +1657,17 @@ function CoordinatorDashboard({
   const alerts = getCoordinatorAlerts(todaySessions);
   const historySessions = getHistorySessions(sessions, historyFilter);
   const firstName = getFirstName(profile.full_name);
+  const administrationTabs = useMemo(() => getAdministrationTabs(isAdmin), [isAdmin]);
+
+  useEffect(() => {
+    if (!administrationTabs.some((item) => item.id === activeAdminTab)) {
+      setActiveAdminTab("overview");
+    }
+  }, [activeAdminTab, administrationTabs]);
+
+  useEffect(() => {
+    syncAdminTabToUrl(activeAdminTab);
+  }, [activeAdminTab]);
 
   return (
     <section className="dashboard coordinator-dashboard">
@@ -1792,11 +1814,11 @@ function CoordinatorDashboard({
 
       <ActivityFeed logs={activityLogs} sessionById={sessionById} teacherById={teacherById} />
 
-      <details className="panel management-panel administration-panel">
+      <details className="panel management-panel administration-panel" open>
         <summary>
           <div>
             <h3>Administration</h3>
-            <p>Teacher login linking and account status</p>
+            <p>Campus operations tools</p>
           </div>
           <div className="admin-summary">
             <span>Linked {linkedTeachers.length} / {teachers.length}</span>
@@ -1805,56 +1827,138 @@ function CoordinatorDashboard({
           </div>
         </summary>
         <div className="administration-body">
-          {isAdminProfile(profile) && (
-            <UserManagementPanel
-              currentUserId={profile.id}
-              users={managedUsers}
-              loading={userManagementLoading}
-              message={userManagementMessage}
-              onCreateUser={onCreateUser}
-              onUpdateUser={onUpdateUser}
-              onRefreshUsers={onRefreshUsers}
-            />
-          )}
-          <TeacherLoginLinkingPanel
-            actionLoading={actionLoading}
-            isAdmin={isAdminProfile(profile)}
-            managedUsers={managedUsers}
-            message={teacherLinkingMessage}
-            onLinkTeacherLogin={onLinkTeacherLogin}
-            stats={stats}
-            teachers={teachers}
-          />
-          <TeacherRecordsPanel
-            linkedTeachers={linkedTeachers}
-            managedUserById={managedUserById}
-            searchValue={teacherSearch}
-            onSearchChange={setTeacherSearch}
-            teachers={filteredTeachers}
-            totalTeachers={teachers.length}
-          />
-          <RoomRecordsPanel
-            rooms={filteredRoomRecords}
-            searchValue={roomSearch}
-            onSearchChange={setRoomSearch}
-            totalRooms={roomRecords.length}
-          />
-          <StudentRecordsPanel
-            searchValue={studentSearch}
-            onSearchChange={setStudentSearch}
-            selectedStudent={selectedStudent}
-            selectedStudentId={selectedStudentId}
-            students={filteredStudentRecords}
-            totalStudents={studentRecords.length}
-            onSelectStudent={setSelectedStudentId}
-          />
-          <RetroactiveAttendancePanel
-            actionLoading={actionLoading}
-            onSaveRetroactiveAttendance={onSaveRetroactiveAttendance}
-            sessions={sessions}
-          />
+          <nav className="administration-tabs" aria-label="Administration sections">
+            {administrationTabs.map((item) => (
+              <button
+                className={activeAdminTab === item.id ? "administration-tab active" : "administration-tab"}
+                key={item.id}
+                type="button"
+                onClick={() => setActiveAdminTab(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+
+          <div className="administration-tab-panels">
+            <div hidden={activeAdminTab !== "overview"}>
+              <AdministrationOverviewPanel
+                linkedTeachers={linkedTeachers.length}
+                rooms={roomRecords.length}
+                sessions={sessions}
+                stats={stats}
+                teachers={teachers.length}
+              />
+            </div>
+
+            {isAdmin && (
+              <div hidden={activeAdminTab !== "user-management"}>
+                <UserManagementPanel
+                  currentUserId={profile.id}
+                  users={managedUsers}
+                  loading={userManagementLoading}
+                  message={userManagementMessage}
+                  onCreateUser={onCreateUser}
+                  onUpdateUser={onUpdateUser}
+                  onRefreshUsers={onRefreshUsers}
+                />
+              </div>
+            )}
+
+            <div hidden={activeAdminTab !== "teacher-linking"}>
+              <TeacherLoginLinkingPanel
+                actionLoading={actionLoading}
+                isAdmin={isAdmin}
+                managedUsers={managedUsers}
+                message={teacherLinkingMessage}
+                onLinkTeacherLogin={onLinkTeacherLogin}
+                stats={stats}
+                teachers={teachers}
+              />
+            </div>
+
+            <div hidden={activeAdminTab !== "student-records"}>
+              <StudentRecordsPanel
+                searchValue={studentSearch}
+                onSearchChange={setStudentSearch}
+                selectedStudent={selectedStudent}
+                selectedStudentId={selectedStudentId}
+                students={filteredStudentRecords}
+                totalStudents={studentRecords.length}
+                onSelectStudent={setSelectedStudentId}
+              />
+            </div>
+
+            <div hidden={activeAdminTab !== "retroactive-attendance"}>
+              <RetroactiveAttendancePanel
+                actionLoading={actionLoading}
+                onSaveRetroactiveAttendance={onSaveRetroactiveAttendance}
+                sessions={sessions}
+              />
+            </div>
+
+            <div hidden={activeAdminTab !== "teachers"}>
+              <TeacherRecordsPanel
+                linkedTeachers={linkedTeachers}
+                managedUserById={managedUserById}
+                searchValue={teacherSearch}
+                onSearchChange={setTeacherSearch}
+                teachers={filteredTeachers}
+                totalTeachers={teachers.length}
+              />
+            </div>
+
+            <div hidden={activeAdminTab !== "rooms"}>
+              <RoomRecordsPanel
+                rooms={filteredRoomRecords}
+                searchValue={roomSearch}
+                onSearchChange={setRoomSearch}
+                totalRooms={roomRecords.length}
+              />
+            </div>
+
+            <div hidden={activeAdminTab !== "sessions-classes"}>
+              <SessionsClassesPanel sessions={sessions} />
+            </div>
+          </div>
         </div>
       </details>
+    </section>
+  );
+}
+
+function AdministrationOverviewPanel({
+  linkedTeachers,
+  rooms,
+  sessions,
+  stats,
+  teachers,
+}: {
+  linkedTeachers: number;
+  rooms: number;
+  sessions: SummerSession[];
+  stats: CoordinatorStats | null;
+  teachers: number;
+}) {
+  const classCount = new Set(sessions.map((item) => item.classId)).size;
+  const completedLessons = sessions.filter((item) => item.finishedAt).length;
+
+  return (
+    <section className="admin-records-panel administration-overview-panel">
+      <div className="admin-records-heading">
+        <div>
+          <h4>Administration Overview</h4>
+          <p>Quick summary of the current campus administration workspace.</p>
+        </div>
+      </div>
+      <div className="admin-overview-grid">
+        <StatCard label="Teachers" value={teachers} />
+        <StatCard label="Linked Logins" value={`${linkedTeachers} / ${teachers}`} />
+        <StatCard label="Students" value={stats?.studentCount ?? 0} />
+        <StatCard label="Rooms" value={rooms} />
+        <StatCard label="Classes" value={classCount} />
+        <StatCard label="Completed Lessons" value={completedLessons} />
+      </div>
     </section>
   );
 }
@@ -2094,6 +2198,36 @@ function RoomRecordsPanel({
   );
 }
 
+function SessionsClassesPanel({ sessions }: { sessions: SummerSession[] }) {
+  const classRecords = getSessionClassRecords(sessions);
+
+  return (
+    <section className="admin-records-panel">
+      <div className="admin-records-heading">
+        <div>
+          <h4>Sessions / Classes</h4>
+          <p>{classRecords.length} class/session groups shown</p>
+        </div>
+      </div>
+      {classRecords.length === 0 ? (
+        <p className="muted">No sessions or classes are currently loaded.</p>
+      ) : (
+        <div className="admin-record-list">
+          {classRecords.map((item) => (
+            <article className="admin-record-row" key={item.classId}>
+              <div>
+                <strong>{item.className}</strong>
+                <p>{item.teacherName} - {item.room ?? "Room not set"} - {item.timeLabels.join(", ")}</p>
+              </div>
+              <span className="status-pill success">{item.lessonCount} lessons</span>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function StudentRecordsPanel({
   onSearchChange,
   onSelectStudent,
@@ -2111,6 +2245,23 @@ function StudentRecordsPanel({
   students: StudentRecord[];
   totalStudents: number;
 }) {
+  if (selectedStudent) {
+    return (
+      <section className="admin-records-panel student-records-panel">
+        <div className="admin-breadcrumb-row">
+          <div>
+            <p className="admin-breadcrumb">Administration &gt; Student Records &gt; {selectedStudent.fullName}</p>
+            <h4>{selectedStudent.fullName}</h4>
+          </div>
+          <button className="secondary" type="button" onClick={() => onSelectStudent(null)}>
+            Back to Student Records
+          </button>
+        </div>
+        <StudentDetailView student={selectedStudent} />
+      </section>
+    );
+  }
+
   return (
     <section className="admin-records-panel student-records-panel">
       <div className="admin-records-heading">
@@ -2374,6 +2525,18 @@ function RetroactiveAttendancePanel({
 
         {selectedLesson && (
           <>
+            <div className="admin-breadcrumb-row">
+              <div>
+                <p className="admin-breadcrumb">
+                  Administration &gt; Retroactive Attendance &gt; {selectedLesson.className}
+                </p>
+                <h4>{selectedLessonDateLabel}</h4>
+              </div>
+              <button className="secondary" type="button" onClick={() => setSelectedLessonId("")}>
+                Back to Retroactive Attendance
+              </button>
+            </div>
+
             <div className="retro-context-sticky">
               <div className="retro-context-card">
                 <div className="retro-context-main">
@@ -3186,6 +3349,55 @@ function searchable(value: string | null | undefined) {
   return (value ?? "").toLocaleLowerCase("tr-TR");
 }
 
+function getAdministrationTabs(isAdmin: boolean): Array<{ id: AdminTab; label: string }> {
+  return [
+    { id: "overview", label: "Overview" },
+    ...(isAdmin ? [{ id: "user-management" as AdminTab, label: "User Management" }] : []),
+    { id: "teacher-linking", label: "Teacher Login Linking" },
+    { id: "student-records", label: "Student Records" },
+    { id: "retroactive-attendance", label: "Retroactive Attendance" },
+    { id: "teachers", label: "Teachers" },
+    { id: "rooms", label: "Rooms" },
+    { id: "sessions-classes", label: "Sessions / Classes" },
+  ];
+}
+
+function getInitialAdminTab(isAdmin: boolean): AdminTab {
+  if (typeof window === "undefined") return "overview";
+  const requestedTab = normalizeAdminTab(new URLSearchParams(window.location.search).get("adminTab"));
+  if (!requestedTab) return "overview";
+  if (requestedTab === "user-management" && !isAdmin) return "overview";
+  return requestedTab;
+}
+
+function normalizeAdminTab(value: string | null): AdminTab | null {
+  if (
+    value === "overview" ||
+    value === "user-management" ||
+    value === "teacher-linking" ||
+    value === "student-records" ||
+    value === "retroactive-attendance" ||
+    value === "teachers" ||
+    value === "rooms" ||
+    value === "sessions-classes"
+  ) {
+    return value;
+  }
+
+  return null;
+}
+
+function syncAdminTabToUrl(activeTab: AdminTab) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (activeTab === "overview") {
+    url.searchParams.delete("adminTab");
+  } else {
+    url.searchParams.set("adminTab", activeTab);
+  }
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 function matchesTeacherSearch(teacher: Teacher, managedUserById: Map<string, ManagedUser>, searchText: string) {
   if (!searchText) return true;
   const linkedUser = teacher.user_id ? managedUserById.get(teacher.user_id) : null;
@@ -3226,6 +3438,36 @@ function getRoomRecords(sessions: SummerSession[]) {
   }
 
   return Array.from(roomMap.values()).sort((a, b) => a.roomName.localeCompare(b.roomName));
+}
+
+function getSessionClassRecords(sessions: SummerSession[]) {
+  const classMap = new Map<
+    string,
+    {
+      classId: string;
+      className: string;
+      teacherName: string;
+      room: string | null;
+      timeLabels: string[];
+      lessonCount: number;
+    }
+  >();
+
+  for (const sessionItem of sessions) {
+    const record = classMap.get(sessionItem.classId) ?? {
+      classId: sessionItem.classId,
+      className: sessionItem.className,
+      teacherName: sessionItem.teacherName,
+      room: sessionItem.location,
+      timeLabels: [],
+      lessonCount: 0,
+    };
+    record.lessonCount += 1;
+    addUnique(record.timeLabels, `${formatTime(sessionItem.startsAt)}-${formatTime(sessionItem.endsAt)}`);
+    classMap.set(sessionItem.classId, record);
+  }
+
+  return Array.from(classMap.values()).sort((a, b) => a.className.localeCompare(b.className));
 }
 
 function getStudentRecords(sessions: SummerSession[]) {

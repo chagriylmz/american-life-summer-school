@@ -955,6 +955,67 @@ select:focus {
   padding: 18px 20px 20px;
 }
 
+.administration-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.administration-tab {
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 8px 11px;
+  color: var(--muted);
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.86rem;
+  font-weight: 850;
+}
+
+.administration-tab.active {
+  border-color: rgba(20, 130, 208, 0.26);
+  color: var(--navy);
+  background: #edf6ff;
+}
+
+.administration-tab-panels {
+  display: grid;
+  gap: 16px;
+}
+
+.administration-tab-panels > [hidden] {
+  display: none;
+}
+
+.admin-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-breadcrumb-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px;
+}
+
+.admin-breadcrumb-row h4,
+.admin-breadcrumb-row p {
+  margin: 0;
+}
+
+.admin-breadcrumb {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
 .account-settings-panel {
   margin-bottom: 18px;
   padding: 0;
@@ -1709,6 +1770,15 @@ select:focus {
 
   .administration-body {
     padding: 16px;
+  }
+
+  .admin-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-breadcrumb-row {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .account-settings-panel summary {
