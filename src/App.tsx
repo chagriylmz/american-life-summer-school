@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabaseClient";
 import { validatePasswordChangeInput } from "./lib/passwordValidation";
@@ -19,13 +19,17 @@ type ActivityActionType =
   | "student_transferred";
 type AdminTab =
   | "dashboard"
+  | "live-sessions"
   | "session-history"
+  | "attention-needed"
+  | "administration"
   | "user-management"
   | "teacher-linking"
   | "reports"
   | "student-records"
   | "student-management"
   | "retroactive-attendance"
+  | "activity-feed"
   | "teachers"
   | "rooms"
   | "sessions-classes";
@@ -1897,6 +1901,7 @@ function CoordinatorDashboard({
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [historyDate, setHistoryDate] = useState(() => getDefaultSummerSchoolHistoryDate(getTodayDate()));
   const [reportDate, setReportDate] = useState(() => getTodayDate());
+  const [clockNow, setClockNow] = useState(() => new Date());
   const isAdmin = isAdminProfile(profile);
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>(() => getInitialAdminTab(isAdmin));
   const linkedTeachers = teachers.filter((item) => item.user_id);
@@ -1946,6 +1951,11 @@ function CoordinatorDashboard({
   const upcomingSessions = todaySessions.filter((item) => !item.startedAt && !item.finishedAt);
   const notesSubmitted = todaySessions.filter((item) => item.note.trim().length > 0).length;
   const alerts = getCoordinatorAlerts(todaySessions);
+  const dashboardAttendanceTotals = getDashboardAttendanceTotals(todaySessions);
+  const dashboardAttentionGroups = getDashboardAttentionGroups(attentionNeededItems);
+  const todayScheduleRows = getTodayScheduleRows(todaySessions);
+  const recentActivityLogs = activityLogs.slice(0, 6);
+  const missingNotes = todaySessions.filter((item) => item.startedAt && item.note.trim().length === 0).length;
   const historySessions = getHistorySessionsByDate(sessions, historyDate);
   const historyDateLabel = formatLessonDateWithWeekday(historyDate);
   const firstName = getFirstName(profile.full_name);
@@ -1954,146 +1964,233 @@ function CoordinatorDashboard({
     () => administrationNavGroups.flatMap((group) => group.items),
     [administrationNavGroups],
   );
+  const allowedAdminTabs = useMemo(() => getAllowedAdminTabs(isAdmin), [isAdmin]);
 
   useEffect(() => {
-    if (!administrationNavItems.some((item) => item.id === activeAdminTab)) {
+    if (!allowedAdminTabs.includes(activeAdminTab)) {
       setActiveAdminTab("dashboard");
     }
-  }, [activeAdminTab, administrationNavItems]);
+  }, [activeAdminTab, allowedAdminTabs]);
 
   useEffect(() => {
     syncAdminTabToUrl(activeAdminTab);
   }, [activeAdminTab]);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setClockNow(new Date()), 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
   return (
     <section className="dashboard coordinator-dashboard">
       <div className="coordinator-workspace">
         <aside className="coordinator-sidebar" aria-label="Coordinator navigation">
-          <div className="coordinator-sidebar-summary">
-            <strong>Campus Workspace</strong>
-            <span>{stats?.studentCount ?? 0} students</span>
+          <div className="coordinator-sidebar-brand">
+            <img src="/logo.jpg" alt="American Life Language Institute" />
+            <div>
+              <strong>American Life</strong>
+              <span>Sancaktepe Branch</span>
+            </div>
           </div>
           <nav className="coordinator-sidebar-nav">
-            {administrationNavGroups.map((group) => (
-              <div className="coordinator-sidebar-group" key={group.label}>
-                <p>{group.label}</p>
-                {group.items.map((item) => (
-                  <button
-                    aria-current={activeAdminTab === item.id ? "page" : undefined}
-                    className={activeAdminTab === item.id ? "coordinator-sidebar-item active" : "coordinator-sidebar-item"}
-                    key={item.id}
-                    type="button"
-                    onClick={() => setActiveAdminTab(item.id)}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            ))}
+            {administrationNavItems.map((item) => {
+              const isActive = isSidebarAdminItemActive(item.id, activeAdminTab);
+
+              return (
+                <button
+                  aria-current={isActive ? "page" : undefined}
+                  className={isActive ? "coordinator-sidebar-item active" : "coordinator-sidebar-item"}
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveAdminTab(item.id)}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
           </nav>
           <div className="coordinator-sidebar-meta">
-            <span>Linked {linkedTeachers.length} / {teachers.length}</span>
-            <span>{teachers.length} teachers</span>
+            <strong>{profile.full_name}</strong>
+            <span>{profile.role}</span>
           </div>
         </aside>
 
         <div className="coordinator-workspace-content">
           <div hidden={activeAdminTab !== "dashboard"}>
-      <section className="coordinator-greeting">
-        <div>
-          <span className="eyebrow">Coordinator Dashboard</span>
-          <h2>{getGreeting()}, {firstName}</h2>
-          <p>{formatDate(today)} · Summer School Module operations</p>
-        </div>
-        <div className="coordinator-greeting-meta">
-          <strong>{todaySessions.length}</strong>
-          <span>sessions today</span>
-        </div>
-      </section>
+            <section className="modern-dashboard-header">
+              <div>
+                <span className="eyebrow">Coordinator Dashboard</span>
+                <h2>{getGreeting()}, {firstName}</h2>
+                <p>{formatDate(today)} - Summer School Module</p>
+              </div>
+              <div className="dashboard-header-cards">
+                <DashboardInfoCard label="Summer School" value="Jul 6 - Aug 12, 2026" />
+                <DashboardInfoCard label={formatClockWeekday(clockNow)} value={formatClockTime(clockNow)} />
+              </div>
+            </section>
 
-      <section className="session-group">
-        <div className="section-heading compact">
-          <h3>Today's Overview</h3>
-          <p>Summer School Module operational snapshot</p>
-        </div>
-        <div className="stats-grid overview-grid operations-overview-grid">
-          <StatCard icon="Cal" label="Sessions Today" value={stats?.todaySessionCount ?? 0} />
-          <StatCard icon="Live" label="Active Sessions" value={activeSessions.length} />
-          <StatCard icon="Done" label="Completed Sessions" value={completedSessions.length} />
-          <StatCard icon="Next" label="Upcoming / Not Started" value={upcomingSessions.length} />
-          <StatCard icon="%" label="Attendance Rate" value={getAttendanceRateLabel(todaySessions)} />
-          <StatCard icon="Note" label="Lesson Notes Submitted" value={`${notesSubmitted} / ${todaySessions.length}`} />
-          <StatCard icon="!" label="Alerts" value={alerts.length} />
-        </div>
-      </section>
+            <section className="dashboard-kpi-grid" aria-label="Today's overview">
+              <DashboardStatCard icon="CAL" label="Sessions Today" value={stats?.todaySessionCount ?? 0} subtitle="Scheduled lessons" />
+              <DashboardStatCard icon="ON" label="Active Sessions" value={activeSessions.length} subtitle="Currently open" />
+              <DashboardStatCard icon="OK" label="Completed Sessions" value={completedSessions.length} subtitle="Finished today" />
+              <DashboardStatCard icon="UP" label="Upcoming / Not Started" value={upcomingSessions.length} subtitle="Awaiting start" />
+              <DashboardStatCard icon="%" label="Attendance Rate" value={getAttendanceRateLabel(todaySessions)} subtitle={`${dashboardAttendanceTotals.marked}/${dashboardAttendanceTotals.expected} marked`} />
+              <DashboardStatCard icon="NT" label="Lesson Notes Submitted" value={`${notesSubmitted}/${todaySessions.length}`} subtitle={`${missingNotes} pending`} />
+              <DashboardStatCard icon="!" label="Alerts" value={alerts.length} subtitle={alerts.length === 0 ? "All clear" : "Need review"} />
+            </section>
 
       <GlobalStudentSearch
         resultsSource={globalStudentSearchSource}
         onOpenStudentProfile={onOpenStudentProfile}
       />
 
-      <section className="session-group">
-        <div className="alerts-panel">
-          <div>
-            <h4>Alerts</h4>
-            <p>{alerts.length === 0 ? "No operational alerts right now." : `${alerts.length} items need attention.`}</p>
-          </div>
-          {alerts.length > 0 && (
-            <div className="alert-list">
-              {alerts.map((alert) => (
-                <article className="alert-item" key={alert.id}>
-                  <strong>{alert.label}</strong>
-                  <span>{alert.detail}</span>
-                </article>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
+            <section className="dashboard-main-grid" aria-label="Coordinator operations">
+              <DashboardPanel
+                title="Live Sessions Today"
+                subtitle={`${filteredTodaySessions.length} of ${todaySessions.length} sessions`}
+                actionLabel="View All"
+                onAction={() => setActiveAdminTab("live-sessions")}
+              >
+                {todaySessions.length === 0 ? (
+                  <p className="muted">No Summer School Module sessions are scheduled for today.</p>
+                ) : filteredTodaySessions.length === 0 ? (
+                  <p className="muted">No sessions match this search.</p>
+                ) : (
+                  <div className="dashboard-session-list">
+                    {filteredTodaySessions.slice(0, 5).map((item) => (
+                      <DashboardSessionRow item={item} key={item.id} />
+                    ))}
+                  </div>
+                )}
+              </DashboardPanel>
 
-      <AttentionNeededPanel items={attentionNeededItems} onOpenStudentProfile={onOpenStudentProfile} />
+              <DashboardPanel
+                title="Attention Needed"
+                subtitle={`${attentionNeededItems.length} flagged students`}
+                actionLabel="View Queue"
+                onAction={() => setActiveAdminTab("attention-needed")}
+              >
+                {attentionNeededItems.length === 0 ? (
+                  <p className="muted">No students need attention right now.</p>
+                ) : (
+                  <div className="dashboard-attention-groups">
+                    {dashboardAttentionGroups.map((group) => (
+                      <article className="dashboard-attention-group" key={group.label}>
+                        <strong>{group.label}</strong>
+                        <span>{group.count} student{group.count === 1 ? "" : "s"}</span>
+                      </article>
+                    ))}
+                  </div>
+                )}
+                <div className="dashboard-note-strip">
+                  <span>Lesson Notes</span>
+                  <strong>{notesSubmitted} submitted</strong>
+                  <span>{missingNotes} pending</span>
+                </div>
+              </DashboardPanel>
 
-      <section className="session-group live-sessions-section">
-        <div className="live-session-toolbar">
-          <div className="section-heading compact">
-            <h3>Live / Today's Sessions</h3>
-            <p>{filteredTodaySessions.length} of {todaySessions.length} sessions shown</p>
+              <DashboardPanel title="Today's Schedule" subtitle={`${todayScheduleRows.length} time blocks`}>
+                {todayScheduleRows.length === 0 ? (
+                  <p className="muted">No schedule blocks for today.</p>
+                ) : (
+                  <div className="dashboard-schedule-list">
+                    {todayScheduleRows.map((row) => (
+                      <article className="dashboard-schedule-row" key={row.timeLabel}>
+                        <strong>{row.timeLabel}</strong>
+                        <span>{row.sessionCount} session{row.sessionCount === 1 ? "" : "s"}</span>
+                        <span>{row.rooms}</span>
+                      </article>
+                    ))}
+                  </div>
+                )}
+                <div className="dashboard-quick-actions">
+                  <QuickActionButton label="Reports" onClick={() => setActiveAdminTab("reports")} />
+                  <QuickActionButton label="Student Records" onClick={() => setActiveAdminTab("student-records")} />
+                  <QuickActionButton label="Session History" onClick={() => setActiveAdminTab("session-history")} />
+                </div>
+              </DashboardPanel>
+            </section>
+
+            <section className="dashboard-bottom-grid" aria-label="Daily operations detail">
+              <DashboardPanel title="Today's Overview" subtitle="Attendance totals">
+                <div className="dashboard-mini-stats">
+                  <span><strong>{dashboardAttendanceTotals.expected}</strong> Expected</span>
+                  <span><strong>{dashboardAttendanceTotals.present}</strong> Present</span>
+                  <span><strong>{dashboardAttendanceTotals.late}</strong> Late</span>
+                  <span><strong>{dashboardAttendanceTotals.absent}</strong> Absent</span>
+                </div>
+              </DashboardPanel>
+
+              <DashboardPanel
+                title="Recent Activity"
+                subtitle={`${recentActivityLogs.length} latest actions`}
+                actionLabel="View Activity Feed"
+                onAction={() => setActiveAdminTab("activity-feed")}
+              >
+                {recentActivityLogs.length === 0 ? (
+                  <p className="muted">No activity recorded yet.</p>
+                ) : (
+                  <div className="dashboard-activity-list">
+                    {recentActivityLogs.map((log) => (
+                      <DashboardActivityRow
+                        item={log}
+                        key={log.id}
+                        sessionById={sessionById}
+                        teacherById={teacherById}
+                      />
+                    ))}
+                  </div>
+                )}
+              </DashboardPanel>
+            </section>
           </div>
-          <label className="search-field">
-            <span>Search by teacher or room</span>
-            <input
-              type="search"
-              value={sessionSearch}
-              onChange={(event) => setSessionSearch(event.target.value)}
-              placeholder="Teacher or room"
-            />
-          </label>
-        </div>
-        {todaySessions.length === 0 ? (
-          <div className="panel">
-            <p className="muted">No Summer School Module sessions are scheduled for today.</p>
+
+          <div hidden={activeAdminTab !== "live-sessions"}>
+            <section className="session-group live-sessions-section">
+              <div className="live-session-toolbar">
+                <div className="section-heading compact">
+                  <h3>Live / Today's Sessions</h3>
+                  <p>{filteredTodaySessions.length} of {todaySessions.length} sessions shown</p>
+                </div>
+                <label className="search-field">
+                  <span>Search by teacher or room</span>
+                  <input
+                    type="search"
+                    value={sessionSearch}
+                    onChange={(event) => setSessionSearch(event.target.value)}
+                    placeholder="Teacher or room"
+                  />
+                </label>
+              </div>
+              {todaySessions.length === 0 ? (
+                <div className="panel">
+                  <p className="muted">No Summer School Module sessions are scheduled for today.</p>
+                </div>
+              ) : filteredTodaySessions.length === 0 ? (
+                <div className="panel">
+                  <p className="muted">No sessions match this search.</p>
+                </div>
+              ) : (
+                <div className="session-tracker session-card-grid">
+                  {filteredTodaySessions.map((item) => (
+                    <CoordinatorSessionRow
+                      actionLoading={actionLoading}
+                      item={item}
+                      key={item.id}
+                      onFinishSession={onFinishSession}
+                      onMarkAttendance={onMarkAttendance}
+                      onSaveNote={onSaveNote}
+                      activityLogs={activityLogs}
+                      onOpenStudentProfile={onOpenStudentProfile}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
-        ) : filteredTodaySessions.length === 0 ? (
-          <div className="panel">
-            <p className="muted">No sessions match this search.</p>
-          </div>
-        ) : (
-          <div className="session-tracker session-card-grid">
-            {filteredTodaySessions.map((item) => (
-              <CoordinatorSessionRow
-                actionLoading={actionLoading}
-                item={item}
-                key={item.id}
-                onFinishSession={onFinishSession}
-                onMarkAttendance={onMarkAttendance}
-                onSaveNote={onSaveNote}
-                activityLogs={activityLogs}
-                onOpenStudentProfile={onOpenStudentProfile}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+
+          <div hidden={activeAdminTab !== "attention-needed"}>
+            <AttentionNeededPanel items={attentionNeededItems} onOpenStudentProfile={onOpenStudentProfile} />
           </div>
 
           <div hidden={activeAdminTab !== "session-history"}>
@@ -2141,18 +2238,30 @@ function CoordinatorDashboard({
       </section>
           </div>
 
-          <div hidden={activeAdminTab !== "dashboard"}>
-      {pastEntrySessions.length > 0 && (
-        <div className="panel late-entry-panel">
-          <strong>Late entry queue</strong>
-          <span>{pastEntrySessions.length} unfinished past sessions are available inside Session History after enabling editing.</span>
-        </div>
-      )}
+          <div hidden={activeAdminTab !== "activity-feed"}>
+            {pastEntrySessions.length > 0 && (
+              <div className="panel late-entry-panel">
+                <strong>Late entry queue</strong>
+                <span>{pastEntrySessions.length} unfinished past sessions are available inside Session History after enabling editing.</span>
+              </div>
+            )}
 
-      <ActivityFeed logs={activityLogs} sessionById={sessionById} teacherById={teacherById} />
+            <ActivityFeed logs={activityLogs} sessionById={sessionById} teacherById={teacherById} />
           </div>
 
           <div className="administration-tab-panels">
+            <div hidden={activeAdminTab !== "administration"}>
+              <AdministrationOverviewPanel
+                isAdmin={isAdmin}
+                linkedTeachers={linkedTeachers.length}
+                rooms={roomRecords.length}
+                sessions={sessions}
+                stats={stats}
+                teachers={teachers.length}
+                onOpenTab={setActiveAdminTab}
+              />
+            </div>
+
             {isAdmin && (
               <div hidden={activeAdminTab !== "user-management"}>
                 <UserManagementPanel
@@ -2251,13 +2360,17 @@ function CoordinatorDashboard({
 }
 
 function AdministrationOverviewPanel({
+  isAdmin,
   linkedTeachers,
+  onOpenTab,
   rooms,
   sessions,
   stats,
   teachers,
 }: {
+  isAdmin: boolean;
   linkedTeachers: number;
+  onOpenTab: (tab: AdminTab) => void;
   rooms: number;
   sessions: SummerSession[];
   stats: CoordinatorStats | null;
@@ -2282,7 +2395,126 @@ function AdministrationOverviewPanel({
         <StatCard label="Classes" value={classCount} />
         <StatCard label="Completed Lessons" value={completedLessons} />
       </div>
+      <div className="administration-tool-grid">
+        {isAdmin && <QuickActionButton label="User Management" onClick={() => onOpenTab("user-management")} />}
+        {isAdmin && <QuickActionButton label="Teacher Login Linking" onClick={() => onOpenTab("teacher-linking")} />}
+        <QuickActionButton label="Student Management" onClick={() => onOpenTab("student-management")} />
+        <QuickActionButton label="Teachers" onClick={() => onOpenTab("teachers")} />
+        <QuickActionButton label="Rooms" onClick={() => onOpenTab("rooms")} />
+        <QuickActionButton label="Sessions / Classes" onClick={() => onOpenTab("sessions-classes")} />
+      </div>
     </section>
+  );
+}
+
+function DashboardInfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <article className="dashboard-info-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </article>
+  );
+}
+
+function DashboardStatCard({
+  icon,
+  label,
+  subtitle,
+  value,
+}: {
+  icon: string;
+  label: string;
+  subtitle: string;
+  value: number | string;
+}) {
+  return (
+    <article className="dashboard-stat-card">
+      <span className="dashboard-stat-icon" aria-hidden="true">{icon}</span>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{subtitle}</small>
+    </article>
+  );
+}
+
+function DashboardPanel({
+  actionLabel,
+  children,
+  onAction,
+  subtitle,
+  title,
+}: {
+  actionLabel?: string;
+  children: ReactNode;
+  onAction?: () => void;
+  subtitle?: string;
+  title: string;
+}) {
+  return (
+    <section className="dashboard-panel">
+      <div className="dashboard-panel-heading">
+        <div>
+          <h3>{title}</h3>
+          {subtitle && <p>{subtitle}</p>}
+        </div>
+        {actionLabel && onAction && (
+          <button className="secondary dashboard-panel-action" type="button" onClick={onAction}>
+            {actionLabel}
+          </button>
+        )}
+      </div>
+      <div className="dashboard-panel-body">{children}</div>
+    </section>
+  );
+}
+
+function DashboardSessionRow({ item }: { item: SummerSession }) {
+  const lifecycle = getLifecycleStatus(item);
+  const counts = getAttendanceCounts(item);
+  const noteDone = item.note.trim().length > 0;
+
+  return (
+    <article className="dashboard-session-row">
+      <span className="teacher-avatar compact-avatar" aria-hidden="true">{getInitials(item.teacherName)}</span>
+      <div>
+        <strong>{item.teacherName}</strong>
+        <span>{formatTime(item.startsAt)}-{formatTime(item.endsAt)} - {item.location ?? "Room not set"}</span>
+      </div>
+      <div className="dashboard-row-badges">
+        <span className={`status-badge ${lifecycle.kind}`}>{lifecycle.label}</span>
+        <span>{counts.marked}/{item.students.length} marked</span>
+        <span>{noteDone ? "Note submitted" : "Note missing"}</span>
+      </div>
+    </article>
+  );
+}
+
+function QuickActionButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button className="secondary dashboard-quick-action" type="button" onClick={onClick}>
+      {label}
+    </button>
+  );
+}
+
+function DashboardActivityRow({
+  item,
+  sessionById,
+  teacherById,
+}: {
+  item: ActivityLogRow;
+  sessionById: Map<string, SummerSession>;
+  teacherById: Map<string, Teacher>;
+}) {
+  const display = getActivityDisplay(item, sessionById, teacherById);
+
+  return (
+    <article className="dashboard-activity-row">
+      <time>{formatActivityTime(item.created_at)}</time>
+      <strong>{display.teacherName}</strong>
+      <span>{getActivityLabel(item.action_type)}</span>
+      <small>{display.sessionLabel}</small>
+    </article>
   );
 }
 
@@ -4803,6 +5035,64 @@ function getFirstName(fullName: string) {
   return fullName.trim().split(/\s+/)[0] || "Coordinator";
 }
 
+function formatClockTime(date: Date) {
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatClockWeekday(date: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+  }).format(date);
+}
+
+function getDashboardAttendanceTotals(sessions: SummerSession[]) {
+  return sessions.reduce(
+    (totals, item) => {
+      const counts = getAttendanceCounts(item);
+      return {
+        expected: totals.expected + item.students.length,
+        marked: totals.marked + counts.marked,
+        present: totals.present + counts.present,
+        late: totals.late + counts.late,
+        absent: totals.absent + counts.absent,
+      };
+    },
+    { expected: 0, marked: 0, present: 0, late: 0, absent: 0 },
+  );
+}
+
+function getDashboardAttentionGroups(items: AttentionNeededItem[]) {
+  const groups = new Map<string, number>();
+  for (const item of items) {
+    const label = formatAttentionReasonLabel(item.primaryReason);
+    groups.set(label, (groups.get(label) ?? 0) + 1);
+  }
+
+  return Array.from(groups.entries()).map(([label, count]) => ({ label, count }));
+}
+
+function getTodayScheduleRows(sessions: SummerSession[]) {
+  return Array.from(groupSessionsByTime(sessions).entries()).map(([timeLabel, items]) => ({
+    timeLabel,
+    sessionCount: items.length,
+    rooms: getCompactRoomList(items),
+  }));
+}
+
+function getCompactRoomList(sessions: SummerSession[]) {
+  const rooms = Array.from(new Set(sessions.map((item) => item.location).filter(Boolean))) as string[];
+  if (rooms.length === 0) return "Rooms not set";
+  if (rooms.length <= 3) return rooms.join(", ");
+  return `${rooms.slice(0, 3).join(", ")} +${rooms.length - 3}`;
+}
+
+function formatAttentionReasonLabel(reason: AttentionReason) {
+  return reason.label;
+}
+
 function getGreeting() {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -4905,40 +5195,40 @@ function getGlobalStudentSearchResults(resultsSource: GlobalStudentSearchResult[
     });
 }
 
-function getAdministrationNavGroups(isAdmin: boolean): AdministrationNavGroup[] {
+function getAdministrationNavGroups(_isAdmin: boolean): AdministrationNavGroup[] {
   return [
     {
       label: "Overview",
-      items: [{ id: "dashboard", label: "Dashboard" }],
-    },
-    {
-      label: "Attendance",
       items: [
+        { id: "dashboard", label: "Overview" },
+        { id: "live-sessions", label: "Live Sessions" },
         { id: "session-history", label: "Session History" },
-        { id: "retroactive-attendance", label: "Retroactive Attendance" },
-      ],
-    },
-    {
-      label: "Student Records",
-      items: [
+        { id: "retroactive-attendance", label: "Attendance" },
         { id: "student-records", label: "Student Records" },
-        { id: "student-management", label: "Student Management" },
+        { id: "attention-needed", label: "Attention Needed" },
+        { id: "reports", label: "Reports" },
+        { id: "administration", label: "Administration" },
       ],
     },
-    {
-      label: "Insights",
-      items: [{ id: "reports", label: "Reports" }],
-    },
-    {
-      label: "Administration",
-      items: [
-        ...(isAdmin ? [{ id: "user-management" as AdminTab, label: "User Management" }] : []),
-        ...(isAdmin ? [{ id: "teacher-linking" as AdminTab, label: "Teacher Login Linking" }] : []),
-        { id: "teachers", label: "Teachers" },
-        { id: "rooms", label: "Rooms" },
-        { id: "sessions-classes", label: "Sessions / Classes" },
-      ],
-    },
+  ];
+}
+
+function getAllowedAdminTabs(isAdmin: boolean): AdminTab[] {
+  return [
+    "dashboard",
+    "live-sessions",
+    "session-history",
+    "retroactive-attendance",
+    "student-records",
+    "student-management",
+    "attention-needed",
+    "reports",
+    "activity-feed",
+    "administration",
+    ...(isAdmin ? (["user-management", "teacher-linking"] as AdminTab[]) : []),
+    "teachers",
+    "rooms",
+    "sessions-classes",
   ];
 }
 
@@ -4954,13 +5244,17 @@ function normalizeAdminTab(value: string | null): AdminTab | null {
   if (
     value === "dashboard" ||
     value === "overview" ||
+    value === "live-sessions" ||
     value === "session-history" ||
+    value === "attention-needed" ||
+    value === "administration" ||
     value === "user-management" ||
     value === "teacher-linking" ||
     value === "reports" ||
     value === "student-records" ||
     value === "student-management" ||
     value === "retroactive-attendance" ||
+    value === "activity-feed" ||
     value === "teachers" ||
     value === "rooms" ||
     value === "sessions-classes"
@@ -4969,6 +5263,12 @@ function normalizeAdminTab(value: string | null): AdminTab | null {
   }
 
   return null;
+}
+
+function isSidebarAdminItemActive(itemId: AdminTab, activeTab: AdminTab) {
+  if (itemId === activeTab) return true;
+  if (itemId !== "administration") return false;
+  return ["user-management", "teacher-linking", "student-management", "teachers", "rooms", "sessions-classes"].includes(activeTab);
 }
 
 function syncAdminTabToUrl(activeTab: AdminTab) {
