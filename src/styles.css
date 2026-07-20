@@ -2331,6 +2331,23 @@ select:focus {
   gap: 8px;
 }
 
+.teacher-session-section {
+  display: grid;
+  gap: 8px;
+}
+
+.teacher-session-section + .teacher-session-section {
+  margin-top: 8px;
+}
+
+.teacher-session-section h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .session-tab {
   display: grid;
   height: auto;
@@ -2341,6 +2358,11 @@ select:focus {
   color: var(--text);
   background: #ffffff;
   box-shadow: none;
+}
+
+.session-tab.urgent {
+  border-color: rgba(181, 124, 8, 0.34);
+  background: #fff8e6;
 }
 
 .session-tab.active {

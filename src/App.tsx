@@ -413,7 +413,14 @@ function App() {
   );
   const isAdmin = useMemo(() => isAdminProfile(profile), [profile]);
 
-  const selectedSession = teacherSessions.find((item: SummerSession) => item.id === selectedSessionId) ?? null;
+  const teacherUnfinishedSessions = useMemo(
+    () => getTeacherUnfinishedSessions(teacherProfileSessions),
+    [teacherProfileSessions],
+  );
+  const selectedSession =
+    teacherProfileSessions.find((item: SummerSession) => item.id === selectedSessionId) ??
+    teacherSessions.find((item: SummerSession) => item.id === selectedSessionId) ??
+    null;
   const studentProfileSessions = isCoordinator
     ? coordinatorSessions
     : profile?.role === "teacher"
@@ -686,21 +693,17 @@ function App() {
       sessions = await loadSessions(linkedTeacher.id);
     }
 
-    const teacherSessionCards = getTeacherSessionCards(sessions);
+    const teacherSessionCards = getTeacherTodaySessionCards(sessions);
 
     setTeacher(linkedTeacher);
     setTeacherProfileSessions(sessions);
     setTeacherSessions(teacherSessionCards);
 
-    const activeSessions = getActiveSessions(sessions);
-    if (activeSessions.length > 1) {
-      setError("Multiple active sessions detected. Please contact the coordinator.");
-      setSelectedSessionId(null);
-      return;
-    }
-
-    if (activeSessions.length === 1) {
-      setSelectedSessionId(activeSessions[0].id);
+    const unfinishedSessions = getTeacherUnfinishedSessions(sessions);
+    if (unfinishedSessions.length > 0) {
+      setSelectedSessionId((currentId: string | null) =>
+        getNextTeacherSelectedSessionId(currentId, sessions, [...unfinishedSessions, ...teacherSessionCards]),
+      );
       return;
     }
 
@@ -1707,6 +1710,7 @@ function App() {
       {profile.role === "teacher" && (
         <TeacherDashboard
           teacher={teacher}
+          unfinishedSessions={teacherUnfinishedSessions}
           sessions={teacherSessions}
           selectedSession={selectedSession}
           selectedSessionId={selectedSessionId}
@@ -4534,6 +4538,7 @@ function LegacyActivityFeed({
 
 function TeacherDashboard({
   teacher,
+  unfinishedSessions,
   sessions,
   selectedSession,
   selectedSessionId,
@@ -4546,6 +4551,7 @@ function TeacherDashboard({
   onOpenStudentProfile,
 }: {
   teacher: Teacher | null;
+  unfinishedSessions: SummerSession[];
   sessions: SummerSession[];
   selectedSession: SummerSession | null;
   selectedSessionId: string | null;
@@ -4587,22 +4593,42 @@ function TeacherDashboard({
           <p>Teacher Dashboard · Summer School Module</p>
         </div>
         <div className="session-tabs">
-          {sessions.length === 0 ? (
-            <p className="muted">No imported sessions found for this teacher.</p>
-          ) : (
-            sessions.map((item) => (
-              <button
-                className={item.id === selectedSessionId ? "session-tab active" : "session-tab"}
-                key={item.id}
-                type="button"
-                onClick={() => onSelectSession(item.id)}
-              >
-                <span>{formatTime(item.startsAt)}-{formatTime(item.endsAt)}</span>
-                <strong>{item.location ?? "Room not set"}</strong>
-                {canTeacherCompleteOverdueSession(item) && <em>Unfinished session</em>}
-              </button>
-            ))
+          {unfinishedSessions.length > 0 && (
+            <div className="teacher-session-section">
+              <h3>Unfinished sessions</h3>
+              {unfinishedSessions.map((item) => (
+                <button
+                  className={item.id === selectedSessionId ? "session-tab active urgent" : "session-tab urgent"}
+                  key={item.id}
+                  type="button"
+                  onClick={() => onSelectSession(item.id)}
+                >
+                  <span>{formatDate(item.lessonDate)}</span>
+                  <strong>{formatTime(item.startsAt)}-{formatTime(item.endsAt)} · {item.location ?? "Room not set"}</strong>
+                  <em>Needs completion</em>
+                </button>
+              ))}
+            </div>
           )}
+
+          <div className="teacher-session-section">
+            <h3>Today's sessions</h3>
+            {sessions.length === 0 ? (
+              <p className="muted">No sessions are scheduled for today.</p>
+            ) : (
+              sessions.map((item) => (
+                <button
+                  className={item.id === selectedSessionId ? "session-tab active" : "session-tab"}
+                  key={item.id}
+                  type="button"
+                  onClick={() => onSelectSession(item.id)}
+                >
+                  <span>{formatTime(item.startsAt)}-{formatTime(item.endsAt)}</span>
+                  <strong>{item.location ?? "Room not set"}</strong>
+                </button>
+              ))
+            )}
+          </div>
         </div>
       </aside>
 
@@ -6115,10 +6141,11 @@ function getActiveSessions(sessions: SummerSession[]) {
   return sessions.filter((item) => item.startedAt && !item.finishedAt);
 }
 
-function getTeacherSessionCards(sessions: SummerSession[]) {
+function getTeacherTodaySessionCards(sessions: SummerSession[]) {
+  const today = getTodayDate();
   const groupedByClass = new Map<string, SummerSession[]>();
 
-  for (const item of sessions) {
+  for (const item of sessions.filter((sessionItem) => sessionItem.lessonDate === today)) {
     const group = groupedByClass.get(item.classId) ?? [];
     group.push(item);
     groupedByClass.set(item.classId, group);
@@ -6129,6 +6156,18 @@ function getTeacherSessionCards(sessions: SummerSession[]) {
     .sort((a, b) => `${a.startsAt}-${a.location ?? ""}-${a.className}`.localeCompare(
       `${b.startsAt}-${b.location ?? ""}-${b.className}`,
     ));
+}
+
+function getTeacherUnfinishedSessions(sessions: SummerSession[]) {
+  return sessions
+    .filter((item) => item.startedAt && !item.finishedAt)
+    .sort((a, b) => {
+      const dateCompare = a.lessonDate.localeCompare(b.lessonDate);
+      if (dateCompare !== 0) return dateCompare;
+      return `${a.startsAt}-${a.location ?? ""}-${a.className}`.localeCompare(
+        `${b.startsAt}-${b.location ?? ""}-${b.className}`,
+      );
+    });
 }
 
 function pickTeacherSessionCard(classLessons: SummerSession[]) {
