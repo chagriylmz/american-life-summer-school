@@ -15,7 +15,8 @@ type ActivityActionType =
   | "attendance_updated"
   | "lesson_note_saved"
   | "session_finished"
-  | "late_entry_updated";
+  | "late_entry_updated"
+  | "student_transferred";
 type AdminTab =
   | "dashboard"
   | "session-history"
@@ -23,6 +24,7 @@ type AdminTab =
   | "teacher-linking"
   | "reports"
   | "student-records"
+  | "student-management"
   | "retroactive-attendance"
   | "teachers"
   | "rooms"
@@ -138,6 +140,9 @@ type AttendanceRow = {
 type ClassStudentRow = {
   class_id: string;
   student_id: string;
+  status: "active" | "paused" | "completed" | "dropped";
+  joined_at: string;
+  left_at: string | null;
 };
 
 type LessonNoteRow = {
@@ -248,6 +253,26 @@ type StudentRecord = {
   studentCode: string | null;
   enrollments: StudentEnrollmentRecord[];
   overallSummary: AttendanceSummary;
+};
+
+type StudentManagementRow = {
+  key: string;
+  studentId: string;
+  studentName: string;
+  studentCode: string | null;
+  classId: string;
+  className: string;
+  teacherName: string;
+  room: string | null;
+  timeLabel: string;
+};
+
+type TransferClassOption = {
+  classId: string;
+  className: string;
+  teacherName: string;
+  room: string | null;
+  timeLabel: string;
 };
 
 type GlobalStudentSearchResult = {
@@ -718,9 +743,8 @@ function App() {
         : Promise.resolve({ data: [], error: null }),
       supabase
         .from("class_students")
-        .select("class_id, student_id")
-        .in("class_id", classIds)
-        .eq("status", "active"),
+        .select("class_id, student_id, status, joined_at, left_at")
+        .in("class_id", classIds),
       supabase
         .from("attendance")
         .select("id, lesson_id, class_id, student_id, status, notes, arrived_at")
@@ -787,13 +811,12 @@ function App() {
       if (!notesByLesson.has(row.lesson_id)) notesByLesson.set(row.lesson_id, row);
     }
 
-    const studentsByClass = new Map<string, SessionStudent[]>();
+    const studentByEnrollment = new Map<string, SessionStudent>();
     for (const row of enrollmentRows) {
       const student = studentById.get(row.student_id);
       if (!student) continue;
       const typedStudent = student as StudentRow;
-      const list = studentsByClass.get(row.class_id) ?? [];
-      list.push({
+      studentByEnrollment.set(`${row.class_id}:${row.student_id}`, {
         id: typedStudent.id,
         fullName: typedStudent.full_name,
         studentCode: typedStudent.student_code,
@@ -805,13 +828,15 @@ function App() {
         attendanceNotes: null,
         attendanceArrivedAt: null,
       });
-      studentsByClass.set(row.class_id, list);
     }
 
     return lessonRows.map((lesson) => {
       const classRow = classById.get(lesson.class_id);
       const teacherRow = lesson.teacher_id ? teacherById.get(lesson.teacher_id) : null;
-      const students = (studentsByClass.get(lesson.class_id) ?? [])
+      const students = enrollmentRows
+        .filter((row) => row.class_id === lesson.class_id && isEnrollmentActiveForLesson(row, lesson.lesson_date))
+        .map((row) => studentByEnrollment.get(`${row.class_id}:${row.student_id}`))
+        .filter((student): student is SessionStudent => Boolean(student))
         .map((student) => {
           const attendanceRow = attendanceByLessonStudent.get(`${lesson.id}:${student.id}`);
           return {
@@ -1059,6 +1084,39 @@ function App() {
     }
   }
 
+  async function transferStudentAssignment(input: {
+    studentId: string;
+    currentClassId: string;
+    targetClassId: string;
+    effectiveDate: string;
+    transferNote: string | null;
+  }) {
+    if (!profile || !isCoordinator) {
+      throw new Error("Only coordinators can transfer students.");
+    }
+
+    setActionLoading(true);
+    setError(null);
+    try {
+      const { error: transferError } = await supabase.rpc("transfer_student_class_session", {
+        p_student_id: input.studentId,
+        p_current_class_id: input.currentClassId,
+        p_target_class_id: input.targetClassId,
+        p_effective_date: input.effectiveDate,
+        p_transfer_note: input.transferNote,
+      });
+
+      if (transferError) {
+        console.error("[Student transfer] RPC failed", transferError);
+        throw new Error(getClientErrorMessage(transferError, "Could not transfer this student."));
+      }
+
+      await loadCoordinatorDashboard();
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function startSession(item: SummerSession) {
     const blockedReason = getSessionStartBlockedReason(item);
     if (blockedReason) {
@@ -1260,7 +1318,10 @@ function App() {
     if (updateError) {
       setError(updateError.message);
     } else {
-      await logActivity("session_finished", item, { late_entry: isCoordinator && canUseLateEntry(item) });
+      await logActivity("session_finished", item, {
+        late_entry: isCoordinator && canUseLateEntry(item),
+        late_completion: !isCoordinator && canTeacherCompleteOverdueSession(item),
+      });
       if (isCoordinator && canUseLateEntry(item)) {
         await logActivity("late_entry_updated", item, { update_type: "session_finished" });
       }
@@ -1638,6 +1699,7 @@ function App() {
           onRefreshUsers={loadManagedUsers}
           onLinkTeacherLogin={linkTeacherLogin}
           onSaveRetroactiveAttendance={saveRetroactiveAttendance}
+          onTransferStudent={transferStudentAssignment}
           teacherLinkingMessage={teacherLinkingMessage}
           onOpenStudentProfile={setSelectedProfileStudentId}
         />
@@ -1793,6 +1855,7 @@ function CoordinatorDashboard({
   onRefreshUsers,
   onLinkTeacherLogin,
   onSaveRetroactiveAttendance,
+  onTransferStudent,
   teacherLinkingMessage,
   onOpenStudentProfile,
 }: {
@@ -1813,6 +1876,13 @@ function CoordinatorDashboard({
   onRefreshUsers: () => Promise<void>;
   onLinkTeacherLogin: (teacherId: string, userId: string) => Promise<void>;
   onSaveRetroactiveAttendance: (lessonId: string, drafts: Record<string, RetroAttendanceDraft>) => Promise<void>;
+  onTransferStudent: (input: {
+    studentId: string;
+    currentClassId: string;
+    targetClassId: string;
+    effectiveDate: string;
+    transferNote: string | null;
+  }) => Promise<void>;
   teacherLinkingMessage: string | null;
   onOpenStudentProfile: (studentId: string) => void;
 }) {
@@ -1836,6 +1906,8 @@ function CoordinatorDashboard({
   const roomRecords = useMemo(() => getRoomRecords(sessions), [sessions]);
   const filteredRoomRecords = roomRecords.filter((item) => matchesRoomSearch(item, roomSearchText));
   const studentRecords = useMemo(() => getStudentRecords(sessions), [sessions]);
+  const studentManagementRows = useMemo(() => getStudentManagementRows(sessions), [sessions]);
+  const transferClassOptions = useMemo(() => getTransferClassOptions(sessions), [sessions]);
   const globalStudentSearchSource = useMemo(() => getGlobalStudentSearchSource(studentRecords), [studentRecords]);
   const attentionNeededItems = useMemo(() => getAttentionNeededItems(studentRecords), [studentRecords]);
   const filteredStudentRecords = studentRecords.filter((item) => matchesStudentSearch(item, studentSearchText));
@@ -2114,8 +2186,8 @@ function CoordinatorDashboard({
               />
             </div>
 
-            <div hidden={activeAdminTab !== "student-records"}>
-              <StudentRecordsPanel
+          <div hidden={activeAdminTab !== "student-records"}>
+            <StudentRecordsPanel
                 searchValue={studentSearch}
                 onSearchChange={setStudentSearch}
                 selectedStudent={selectedStudent}
@@ -2123,10 +2195,19 @@ function CoordinatorDashboard({
                 students={filteredStudentRecords}
                 totalStudents={studentRecords.length}
                 onSelectStudent={setSelectedStudentId}
-              />
-            </div>
+            />
+          </div>
 
-            <div hidden={activeAdminTab !== "retroactive-attendance"}>
+          <div hidden={activeAdminTab !== "student-management"}>
+            <StudentManagementPanel
+              actionLoading={actionLoading}
+              classOptions={transferClassOptions}
+              onTransferStudent={onTransferStudent}
+              rows={studentManagementRows}
+            />
+          </div>
+
+          <div hidden={activeAdminTab !== "retroactive-attendance"}>
               <RetroactiveAttendancePanel
                 actionLoading={actionLoading}
                 onSaveRetroactiveAttendance={onSaveRetroactiveAttendance}
@@ -3250,6 +3331,191 @@ function StudentRecordsPanel({
   );
 }
 
+function StudentManagementPanel({
+  actionLoading,
+  classOptions,
+  onTransferStudent,
+  rows,
+}: {
+  actionLoading: boolean;
+  classOptions: TransferClassOption[];
+  onTransferStudent: (input: {
+    studentId: string;
+    currentClassId: string;
+    targetClassId: string;
+    effectiveDate: string;
+    transferNote: string | null;
+  }) => Promise<void>;
+  rows: StudentManagementRow[];
+}) {
+  const [searchValue, setSearchValue] = useState("");
+  const [selectedRow, setSelectedRow] = useState<StudentManagementRow | null>(null);
+  const [targetClassId, setTargetClassId] = useState("");
+  const [effectiveDate, setEffectiveDate] = useState(() => getDefaultSummerSchoolHistoryDate(getTodayDate()));
+  const [transferNote, setTransferNote] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [messageType, setMessageType] = useState<"success" | "error">("success");
+  const filteredRows = rows.filter((item) => matchesStudentManagementSearch(item, normalizeSearchText(searchValue)));
+  const targetOption = classOptions.find((item) => item.classId === targetClassId) ?? null;
+  const canSubmit =
+    Boolean(selectedRow) &&
+    Boolean(targetOption) &&
+    selectedRow?.classId !== targetClassId &&
+    effectiveDate >= SUMMER_SCHOOL_START_DATE &&
+    effectiveDate <= SUMMER_SCHOOL_END_DATE &&
+    !actionLoading;
+
+  useEffect(() => {
+    if (!selectedRow) return;
+    setTargetClassId("");
+    setEffectiveDate(getDefaultSummerSchoolHistoryDate(getTodayDate()));
+    setTransferNote("");
+    setMessage(null);
+  }, [selectedRow]);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedRow || !targetOption || !canSubmit) return;
+    setMessage(null);
+
+    try {
+      await onTransferStudent({
+        studentId: selectedRow.studentId,
+        currentClassId: selectedRow.classId,
+        targetClassId,
+        effectiveDate,
+        transferNote: transferNote.trim() || null,
+      });
+      setMessageType("success");
+      setMessage("Student transfer saved successfully.");
+      setSelectedRow(null);
+    } catch (transferError) {
+      setMessageType("error");
+      setMessage(getClientErrorMessage(transferError, "Could not transfer this student."));
+    }
+  };
+
+  return (
+    <section className="admin-records-panel student-management-panel">
+      <div className="admin-records-heading">
+        <div>
+          <h4>Student Management</h4>
+          <p>{filteredRows.length} of {rows.length} current assignment records shown</p>
+        </div>
+        <label className="search-field compact-search">
+          <span>Search students</span>
+          <input
+            type="search"
+            value={searchValue}
+            onChange={(event) => setSearchValue(event.target.value)}
+            placeholder="Name or student code"
+          />
+        </label>
+      </div>
+
+      {message && <p className={messageType === "success" ? "management-message" : "error"}>{message}</p>}
+
+      <div className="student-management-layout">
+        <div className="student-management-results">
+          {filteredRows.length === 0 ? (
+            <p className="muted">No student assignments match this search.</p>
+          ) : (
+            filteredRows.map((item) => (
+              <button
+                className={selectedRow?.key === item.key ? "student-management-row selected" : "student-management-row"}
+                key={item.key}
+                type="button"
+                onClick={() => setSelectedRow(item)}
+              >
+                <strong>{item.studentName}</strong>
+                <span>{item.studentCode ?? "No student code"}</span>
+                <span>{item.teacherName} - {item.timeLabel} - {item.room ?? "Room not set"}</span>
+                <span>{item.className}</span>
+                <em>Transfer Student</em>
+              </button>
+            ))
+          )}
+        </div>
+
+        <form className="student-transfer-panel" onSubmit={handleSubmit}>
+          <div>
+            <h5>Transfer Student</h5>
+            <p>Move one student to a different class/session from the selected effective date.</p>
+          </div>
+
+          {!selectedRow ? (
+            <div className="locked-panel">Select a student assignment to begin a transfer.</div>
+          ) : (
+            <>
+              <div className="transfer-summary-grid">
+                <div>
+                  <span>Student</span>
+                  <strong>{selectedRow.studentName}</strong>
+                  <p>{selectedRow.studentCode ?? "No student code"}</p>
+                </div>
+                <div>
+                  <span>Current assignment</span>
+                  <strong>{selectedRow.teacherName} - {selectedRow.timeLabel}</strong>
+                  <p>{selectedRow.room ?? "Room not set"} - {selectedRow.className}</p>
+                </div>
+              </div>
+
+              <label>
+                New class/session
+                <select value={targetClassId} onChange={(event) => setTargetClassId(event.target.value)} required>
+                  <option value="">Choose new assignment</option>
+                  {classOptions
+                    .filter((item) => item.classId !== selectedRow.classId)
+                    .map((item) => (
+                      <option value={item.classId} key={item.classId}>
+                        {item.teacherName} - {item.timeLabel} - {item.room ?? "Room not set"} - {item.className}
+                      </option>
+                    ))}
+                </select>
+              </label>
+
+              <label>
+                Effective date
+                <input
+                  type="date"
+                  value={effectiveDate}
+                  min={SUMMER_SCHOOL_START_DATE}
+                  max={SUMMER_SCHOOL_END_DATE}
+                  onChange={(event) => setEffectiveDate(event.target.value)}
+                  required
+                />
+              </label>
+
+              <label>
+                Transfer note
+                <textarea
+                  value={transferNote}
+                  onChange={(event) => setTransferNote(event.target.value)}
+                  placeholder="Optional note"
+                />
+              </label>
+
+              {targetOption && (
+                <div className="transfer-confirmation">
+                  <strong>{selectedRow.studentName}</strong>
+                  <p>From: {selectedRow.teacherName} - {selectedRow.timeLabel} - {selectedRow.room ?? "Room not set"}</p>
+                  <p>To: {targetOption.teacherName} - {targetOption.timeLabel} - {targetOption.room ?? "Room not set"}</p>
+                  <p>Effective: {formatLessonDateWithWeekday(effectiveDate)}</p>
+                  <span>Historical attendance will be preserved.</span>
+                </div>
+              )}
+
+              <button type="submit" disabled={!canSubmit}>
+                {actionLoading ? "Saving transfer..." : "Confirm transfer"}
+              </button>
+            </>
+          )}
+        </form>
+      </div>
+    </section>
+  );
+}
+
 function StudentDetailView({ student }: { student: StudentRecord }) {
   return (
     <div className="admin-record-detail student-profile-embedded">
@@ -4295,6 +4561,7 @@ function TeacherDashboard({
   const sessionHasStarted = Boolean(selectedSession?.startedAt);
   const sessionHasFinished = Boolean(selectedSession?.finishedAt);
   const canEditSessionWork = selectedSession ? canTeacherEditLiveSession(selectedSession) : false;
+  const isOverdueStartedSession = selectedSession ? canTeacherCompleteOverdueSession(selectedSession) : false;
   const attendanceCompleted = selectedSession ? hasCompletedAttendance(selectedSession) : false;
   const noteSaved = Boolean(selectedSession?.note.trim());
   const canFinishSession = canEditSessionWork && attendanceCompleted && noteSaved;
@@ -4332,6 +4599,7 @@ function TeacherDashboard({
               >
                 <span>{formatTime(item.startsAt)}-{formatTime(item.endsAt)}</span>
                 <strong>{item.location ?? "Room not set"}</strong>
+                {canTeacherCompleteOverdueSession(item) && <em>Unfinished session</em>}
               </button>
             ))
           )}
@@ -4370,6 +4638,12 @@ function TeacherDashboard({
               </button>
             </div>
           </div>
+
+          {isOverdueStartedSession && (
+            <div className="session-warning-panel">
+              This session is past its scheduled time. You can still complete attendance, add the lesson note, and finish it.
+            </div>
+          )}
 
           {!sessionHasStarted ? (
             <div className="locked-panel">Start the session to unlock attendance controls.</div>
@@ -4609,16 +4883,20 @@ function getAdministrationNavGroups(isAdmin: boolean): AdministrationNavGroup[] 
   return [
     {
       label: "Overview",
-      items: [
-        { id: "dashboard", label: "Dashboard" },
-        { id: "session-history", label: "Session History" },
-      ],
+      items: [{ id: "dashboard", label: "Dashboard" }],
     },
     {
       label: "Attendance",
       items: [
+        { id: "session-history", label: "Session History" },
         { id: "retroactive-attendance", label: "Retroactive Attendance" },
+      ],
+    },
+    {
+      label: "Student Records",
+      items: [
         { id: "student-records", label: "Student Records" },
+        { id: "student-management", label: "Student Management" },
       ],
     },
     {
@@ -4655,6 +4933,7 @@ function normalizeAdminTab(value: string | null): AdminTab | null {
     value === "teacher-linking" ||
     value === "reports" ||
     value === "student-records" ||
+    value === "student-management" ||
     value === "retroactive-attendance" ||
     value === "teachers" ||
     value === "rooms" ||
@@ -5387,6 +5666,68 @@ function getStudentRecords(sessions: SummerSession[]) {
   });
 }
 
+function getStudentManagementRows(sessions: SummerSession[]) {
+  const today = getTodayDate();
+  const rowMap = new Map<string, StudentManagementRow>();
+
+  for (const sessionItem of sessions) {
+    if (sessionItem.lessonDate < today || sessionItem.lessonDate > SUMMER_SCHOOL_END_DATE) continue;
+    const timeLabel = `${formatTime(sessionItem.startsAt)}-${formatTime(sessionItem.endsAt)}`;
+    for (const student of sessionItem.students) {
+      const key = `${student.id}:${sessionItem.classId}`;
+      if (rowMap.has(key)) continue;
+      rowMap.set(key, {
+        key,
+        studentId: student.id,
+        studentName: student.fullName,
+        studentCode: student.studentCode,
+        classId: sessionItem.classId,
+        className: sessionItem.className,
+        teacherName: sessionItem.teacherName,
+        room: sessionItem.location,
+        timeLabel,
+      });
+    }
+  }
+
+  return Array.from(rowMap.values()).sort((a, b) => {
+    const nameCompare = a.studentName.localeCompare(b.studentName);
+    if (nameCompare !== 0) return nameCompare;
+    return `${a.teacherName}-${a.timeLabel}-${a.room ?? ""}`.localeCompare(`${b.teacherName}-${b.timeLabel}-${b.room ?? ""}`);
+  });
+}
+
+function getTransferClassOptions(sessions: SummerSession[]) {
+  const optionMap = new Map<string, TransferClassOption>();
+
+  for (const sessionItem of sessions) {
+    if (sessionItem.lessonDate < SUMMER_SCHOOL_START_DATE || sessionItem.lessonDate > SUMMER_SCHOOL_END_DATE) continue;
+    if (optionMap.has(sessionItem.classId)) continue;
+    optionMap.set(sessionItem.classId, {
+      classId: sessionItem.classId,
+      className: sessionItem.className,
+      teacherName: sessionItem.teacherName,
+      room: sessionItem.location,
+      timeLabel: `${formatTime(sessionItem.startsAt)}-${formatTime(sessionItem.endsAt)}`,
+    });
+  }
+
+  return Array.from(optionMap.values()).sort((a, b) =>
+    `${a.teacherName}-${a.timeLabel}-${a.room ?? ""}-${a.className}`.localeCompare(
+      `${b.teacherName}-${b.timeLabel}-${b.room ?? ""}-${b.className}`,
+    ),
+  );
+}
+
+function matchesStudentManagementSearch(item: StudentManagementRow, searchText: string) {
+  if (!searchText) return true;
+  return [item.studentName, item.studentCode].some((value) => searchable(value).includes(searchText));
+}
+
+function isEnrollmentActiveForLesson(enrollment: ClassStudentRow, lessonDate: string) {
+  return enrollment.joined_at <= lessonDate && (!enrollment.left_at || enrollment.left_at >= lessonDate);
+}
+
 function getStudentProfileTimeline(student: StudentRecord) {
   return student.enrollments
     .flatMap((enrollment) => enrollment.history)
@@ -5861,12 +6202,11 @@ function canCoordinatorEditSessionRecord(item: SummerSession) {
 }
 
 function canTeacherEditLiveSession(item: SummerSession) {
-  return (
-    Boolean(item.startedAt) &&
-    !item.finishedAt &&
-    item.lessonDate === getTodayDate() &&
-    isNowInsideSessionWindow(item)
-  );
+  return Boolean(item.startedAt) && !item.finishedAt;
+}
+
+function canTeacherCompleteOverdueSession(item: SummerSession) {
+  return canTeacherEditLiveSession(item) && isPastSession(item);
 }
 
 function canUseLateEntry(item: SummerSession) {
@@ -6138,6 +6478,14 @@ function getActivityDisplay(
   teacherById: Map<string, Teacher>,
 ) {
   const sessionItem = log.lesson_id ? sessionById.get(log.lesson_id) : null;
+  const transferDetails = log.action_type === "student_transferred" ? log.details : null;
+  if (transferDetails) {
+    const teacherName = stringFromDetails(transferDetails, "student_name") ?? "Student transferred";
+    const sessionTime = stringFromDetails(transferDetails, "new_session_time") ?? "Session time unavailable";
+    const room = stringFromDetails(transferDetails, "new_room") ?? "Room not set";
+    return { teacherName, sessionLabel: `${sessionTime} - ${room}` };
+  }
+
   const teacherName =
     sessionItem?.teacherName ??
     (log.teacher_id ? teacherById.get(log.teacher_id)?.display_name : null) ??
@@ -6147,6 +6495,11 @@ function getActivityDisplay(
     : "Session details unavailable";
 
   return { teacherName, sessionLabel };
+}
+
+function stringFromDetails(details: Record<string, unknown>, key: string) {
+  const value = details[key];
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 function formatActivityTime(value: string) {
@@ -6184,6 +6537,8 @@ function getActivityLabel(actionType: ActivityActionType) {
       return "Finished session";
     case "late_entry_updated":
       return "Updated late entry";
+    case "student_transferred":
+      return "Transferred student";
     default:
       return actionType;
   }
@@ -6201,6 +6556,8 @@ function getActivityIcon(actionType: ActivityActionType) {
       return "Done";
     case "late_entry_updated":
       return "Late";
+    case "student_transferred":
+      return "Move";
     default:
       return "Log";
   }

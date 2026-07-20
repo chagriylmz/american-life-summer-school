@@ -1789,6 +1789,103 @@ select:focus {
   outline: 3px solid rgba(20, 130, 208, 0.16);
 }
 
+.student-management-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.student-management-results {
+  display: grid;
+  gap: 10px;
+}
+
+.student-management-row {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--text);
+  background: #ffffff;
+  box-shadow: none;
+  text-align: left;
+}
+
+.student-management-row:hover {
+  border-color: rgba(20, 130, 208, 0.24);
+  background: #f8fbff;
+}
+
+.student-management-row:focus-visible {
+  outline: 3px solid rgba(20, 130, 208, 0.24);
+  outline-offset: 2px;
+}
+
+.student-management-row.selected {
+  border-color: var(--blue);
+  background: #edf6ff;
+}
+
+.student-management-row span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
+.student-management-row em {
+  color: var(--blue);
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.student-transfer-panel {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.student-transfer-panel h5,
+.student-transfer-panel p {
+  margin: 0;
+}
+
+.transfer-summary-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.transfer-summary-grid > div,
+.transfer-confirmation {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #f8fbff;
+}
+
+.transfer-summary-grid span,
+.transfer-confirmation span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.transfer-confirmation {
+  display: grid;
+  gap: 5px;
+}
+
 .student-name-button,
 .inline-student-button {
   width: fit-content;
@@ -2252,6 +2349,17 @@ select:focus {
   background: var(--navy);
 }
 
+.session-tab em {
+  color: var(--red);
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.session-tab.active em {
+  color: #ffdbe4;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .session-tab:hover:not(:disabled) {
     border-color: var(--navy);
@@ -2294,6 +2402,15 @@ select:focus {
   padding: 18px;
   color: var(--muted);
   background: #f8fbff;
+}
+
+.session-warning-panel {
+  border: 1px solid rgba(181, 124, 8, 0.28);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #765100;
+  background: #fff8e6;
+  font-weight: 800;
 }
 
 .test-mode-banner {
@@ -2673,10 +2790,15 @@ select:focus {
 
   .student-record-layout,
   .student-record-grid,
+  .student-management-layout,
   .attendance-summary-cards,
   .retro-selector-grid,
   .retro-student-row {
     grid-template-columns: 1fr;
+  }
+
+  .student-transfer-panel {
+    position: static;
   }
 
   .student-profile-overlay {
