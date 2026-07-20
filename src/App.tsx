@@ -1659,6 +1659,47 @@ function App() {
     );
   }
 
+  if (isCoordinator) {
+    return (
+      <main className="coordinator-app-shell">
+        {error && <p className="error coordinator-shell-error">{error}</p>}
+
+        <CoordinatorDashboard
+          stats={stats}
+          teachers={teachers}
+          sessions={coordinatorSessions}
+          activityLogs={activityLogs}
+          actionLoading={actionLoading}
+          onMarkAttendance={markAttendance}
+          onSaveNote={saveLessonNote}
+          onFinishSession={finishSession}
+          profile={profile}
+          managedUsers={managedUsers}
+          userManagementLoading={userManagementLoading}
+          userManagementMessage={userManagementMessage}
+          onCreateUser={createManagedUser}
+          onUpdateUser={updateManagedUser}
+          onRefreshUsers={loadManagedUsers}
+          onLinkTeacherLogin={linkTeacherLogin}
+          onSaveRetroactiveAttendance={saveRetroactiveAttendance}
+          onTransferStudent={transferStudentAssignment}
+          teacherLinkingMessage={teacherLinkingMessage}
+          onOpenStudentProfile={setSelectedProfileStudentId}
+          canInstall={Boolean(installPrompt)}
+          onInstallApp={handleInstallApp}
+          onSignOut={handleSignOut}
+        />
+
+        {selectedStudentProfile && (
+          <StudentProfileDrawer
+            student={selectedStudentProfile}
+            onClose={() => setSelectedProfileStudentId(null)}
+          />
+        )}
+      </main>
+    );
+  }
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -1687,30 +1728,6 @@ function App() {
 
       <AccountSettingsPanel profile={profile} onChangePassword={changeOwnPassword} />
 
-      {isCoordinator && (
-        <CoordinatorDashboard
-          stats={stats}
-          teachers={teachers}
-          sessions={coordinatorSessions}
-          activityLogs={activityLogs}
-          actionLoading={actionLoading}
-          onMarkAttendance={markAttendance}
-          onSaveNote={saveLessonNote}
-          onFinishSession={finishSession}
-          profile={profile}
-          managedUsers={managedUsers}
-          userManagementLoading={userManagementLoading}
-          userManagementMessage={userManagementMessage}
-          onCreateUser={createManagedUser}
-          onUpdateUser={updateManagedUser}
-          onRefreshUsers={loadManagedUsers}
-          onLinkTeacherLogin={linkTeacherLogin}
-          onSaveRetroactiveAttendance={saveRetroactiveAttendance}
-          onTransferStudent={transferStudentAssignment}
-          teacherLinkingMessage={teacherLinkingMessage}
-          onOpenStudentProfile={setSelectedProfileStudentId}
-        />
-      )}
       {profile.role === "teacher" && (
         <TeacherDashboard
           teacher={teacher}
@@ -1866,6 +1883,9 @@ function CoordinatorDashboard({
   onTransferStudent,
   teacherLinkingMessage,
   onOpenStudentProfile,
+  canInstall,
+  onInstallApp,
+  onSignOut,
 }: {
   stats: CoordinatorStats | null;
   teachers: Teacher[];
@@ -1893,6 +1913,9 @@ function CoordinatorDashboard({
   }) => Promise<void>;
   teacherLinkingMessage: string | null;
   onOpenStudentProfile: (studentId: string) => void;
+  canInstall: boolean;
+  onInstallApp: () => void;
+  onSignOut: () => void;
 }) {
   const [sessionSearch, setSessionSearch] = useState("");
   const [teacherSearch, setTeacherSearch] = useState("");
@@ -2015,6 +2038,16 @@ function CoordinatorDashboard({
           <div className="coordinator-sidebar-meta">
             <strong>{profile.full_name}</strong>
             <span>{profile.role}</span>
+          </div>
+          <div className="coordinator-sidebar-actions">
+            {canInstall && (
+              <button type="button" className="coordinator-shell-button" onClick={onInstallApp}>
+                Install
+              </button>
+            )}
+            <button type="button" className="coordinator-shell-button" onClick={onSignOut} disabled={actionLoading}>
+              Sign out
+            </button>
           </div>
         </aside>
 
