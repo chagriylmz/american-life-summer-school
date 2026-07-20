@@ -1240,6 +1240,8 @@ select:focus {
 .coordinator-sidebar-brand strong,
 .coordinator-sidebar-brand span {
   display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .coordinator-sidebar-brand strong {

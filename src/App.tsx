@@ -1989,7 +1989,7 @@ function CoordinatorDashboard({
             <img src="/logo.jpg" alt="American Life Language Institute" />
             <div>
               <strong>American Life</strong>
-              <span>Sancaktepe Branch</span>
+              <span>Sancaktepe Branch - Campus Portal</span>
             </div>
           </div>
           <nav className="coordinator-sidebar-nav">
