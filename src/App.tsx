@@ -17,7 +17,8 @@ type ActivityActionType =
   | "session_finished"
   | "late_entry_updated";
 type AdminTab =
-  | "overview"
+  | "dashboard"
+  | "session-history"
   | "user-management"
   | "teacher-linking"
   | "reports"
@@ -26,6 +27,16 @@ type AdminTab =
   | "teachers"
   | "rooms"
   | "sessions-classes";
+
+type AdministrationNavItem = {
+  id: AdminTab;
+  label: string;
+};
+
+type AdministrationNavGroup = {
+  label: string;
+  items: AdministrationNavItem[];
+};
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -1863,13 +1874,17 @@ function CoordinatorDashboard({
   const historyDateContext = getHistoryDateContext(historySessions);
   const showHistoryDateOnCards = historyDateContext.kind === "multiple";
   const firstName = getFirstName(profile.full_name);
-  const administrationTabs = useMemo(() => getAdministrationTabs(isAdmin), [isAdmin]);
+  const administrationNavGroups = useMemo(() => getAdministrationNavGroups(isAdmin), [isAdmin]);
+  const administrationNavItems = useMemo(
+    () => administrationNavGroups.flatMap((group) => group.items),
+    [administrationNavGroups],
+  );
 
   useEffect(() => {
-    if (!administrationTabs.some((item) => item.id === activeAdminTab)) {
-      setActiveAdminTab("overview");
+    if (!administrationNavItems.some((item) => item.id === activeAdminTab)) {
+      setActiveAdminTab("dashboard");
     }
-  }, [activeAdminTab, administrationTabs]);
+  }, [activeAdminTab, administrationNavItems]);
 
   useEffect(() => {
     syncAdminTabToUrl(activeAdminTab);
@@ -1877,6 +1892,38 @@ function CoordinatorDashboard({
 
   return (
     <section className="dashboard coordinator-dashboard">
+      <div className="coordinator-workspace">
+        <aside className="coordinator-sidebar" aria-label="Coordinator navigation">
+          <div className="coordinator-sidebar-summary">
+            <strong>Campus Workspace</strong>
+            <span>{stats?.studentCount ?? 0} students</span>
+          </div>
+          <nav className="coordinator-sidebar-nav">
+            {administrationNavGroups.map((group) => (
+              <div className="coordinator-sidebar-group" key={group.label}>
+                <p>{group.label}</p>
+                {group.items.map((item) => (
+                  <button
+                    aria-current={activeAdminTab === item.id ? "page" : undefined}
+                    className={activeAdminTab === item.id ? "coordinator-sidebar-item active" : "coordinator-sidebar-item"}
+                    key={item.id}
+                    type="button"
+                    onClick={() => setActiveAdminTab(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </nav>
+          <div className="coordinator-sidebar-meta">
+            <span>Linked {linkedTeachers.length} / {teachers.length}</span>
+            <span>{teachers.length} teachers</span>
+          </div>
+        </aside>
+
+        <div className="coordinator-workspace-content">
+          <div hidden={activeAdminTab !== "dashboard"}>
       <section className="coordinator-greeting">
         <div>
           <span className="eyebrow">Coordinator Dashboard</span>
@@ -1972,7 +2019,9 @@ function CoordinatorDashboard({
           </div>
         )}
       </section>
+          </div>
 
+          <div hidden={activeAdminTab !== "session-history"}>
       <section className="session-group">
         <div className="live-session-toolbar">
           <div className="section-heading compact">
@@ -2023,7 +2072,9 @@ function CoordinatorDashboard({
           </div>
         )}
       </section>
+          </div>
 
+          <div hidden={activeAdminTab !== "dashboard"}>
       {pastEntrySessions.length > 0 && (
         <div className="panel late-entry-panel">
           <strong>Late entry queue</strong>
@@ -2032,44 +2083,9 @@ function CoordinatorDashboard({
       )}
 
       <ActivityFeed logs={activityLogs} sessionById={sessionById} teacherById={teacherById} />
-
-      <details className="panel management-panel administration-panel" open>
-        <summary>
-          <div>
-            <h3>Administration</h3>
-            <p>Campus operations tools</p>
           </div>
-          <div className="admin-summary">
-            <span>Linked {linkedTeachers.length} / {teachers.length}</span>
-            <span>{teachers.length} teachers</span>
-            <span>{stats?.studentCount ?? 0} students</span>
-          </div>
-        </summary>
-        <div className="administration-body">
-          <nav className="administration-tabs" aria-label="Administration sections">
-            {administrationTabs.map((item) => (
-              <button
-                className={activeAdminTab === item.id ? "administration-tab active" : "administration-tab"}
-                key={item.id}
-                type="button"
-                onClick={() => setActiveAdminTab(item.id)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
 
           <div className="administration-tab-panels">
-            <div hidden={activeAdminTab !== "overview"}>
-              <AdministrationOverviewPanel
-                linkedTeachers={linkedTeachers.length}
-                rooms={roomRecords.length}
-                sessions={sessions}
-                stats={stats}
-                teachers={teachers.length}
-              />
-            </div>
-
             {isAdmin && (
               <div hidden={activeAdminTab !== "user-management"}>
                 <UserManagementPanel
@@ -2084,17 +2100,19 @@ function CoordinatorDashboard({
               </div>
             )}
 
-            <div hidden={activeAdminTab !== "teacher-linking"}>
-              <TeacherLoginLinkingPanel
-                actionLoading={actionLoading}
-                isAdmin={isAdmin}
-                managedUsers={managedUsers}
-                message={teacherLinkingMessage}
-                onLinkTeacherLogin={onLinkTeacherLogin}
-                stats={stats}
-                teachers={teachers}
-              />
-            </div>
+            {isAdmin && (
+              <div hidden={activeAdminTab !== "teacher-linking"}>
+                <TeacherLoginLinkingPanel
+                  actionLoading={actionLoading}
+                  isAdmin={isAdmin}
+                  managedUsers={managedUsers}
+                  message={teacherLinkingMessage}
+                  onLinkTeacherLogin={onLinkTeacherLogin}
+                  stats={stats}
+                  teachers={teachers}
+                />
+              </div>
+            )}
 
             <div hidden={activeAdminTab !== "reports"}>
               <ReportsPanel
@@ -2151,7 +2169,7 @@ function CoordinatorDashboard({
             </div>
           </div>
         </div>
-      </details>
+      </div>
     </section>
   );
 }
@@ -4596,31 +4614,52 @@ function getGlobalStudentSearchResults(resultsSource: GlobalStudentSearchResult[
     });
 }
 
-function getAdministrationTabs(isAdmin: boolean): Array<{ id: AdminTab; label: string }> {
+function getAdministrationNavGroups(isAdmin: boolean): AdministrationNavGroup[] {
   return [
-    { id: "overview", label: "Overview" },
-    ...(isAdmin ? [{ id: "user-management" as AdminTab, label: "User Management" }] : []),
-    { id: "teacher-linking", label: "Teacher Login Linking" },
-    { id: "reports", label: "Reports" },
-    { id: "student-records", label: "Student Records" },
-    { id: "retroactive-attendance", label: "Retroactive Attendance" },
-    { id: "teachers", label: "Teachers" },
-    { id: "rooms", label: "Rooms" },
-    { id: "sessions-classes", label: "Sessions / Classes" },
+    {
+      label: "Overview",
+      items: [
+        { id: "dashboard", label: "Dashboard" },
+        { id: "session-history", label: "Session History" },
+      ],
+    },
+    {
+      label: "Attendance",
+      items: [
+        { id: "retroactive-attendance", label: "Retroactive Attendance" },
+        { id: "student-records", label: "Student Records" },
+      ],
+    },
+    {
+      label: "Insights",
+      items: [{ id: "reports", label: "Reports" }],
+    },
+    {
+      label: "Administration",
+      items: [
+        ...(isAdmin ? [{ id: "user-management" as AdminTab, label: "User Management" }] : []),
+        ...(isAdmin ? [{ id: "teacher-linking" as AdminTab, label: "Teacher Login Linking" }] : []),
+        { id: "teachers", label: "Teachers" },
+        { id: "rooms", label: "Rooms" },
+        { id: "sessions-classes", label: "Sessions / Classes" },
+      ],
+    },
   ];
 }
 
 function getInitialAdminTab(isAdmin: boolean): AdminTab {
-  if (typeof window === "undefined") return "overview";
+  if (typeof window === "undefined") return "dashboard";
   const requestedTab = normalizeAdminTab(new URLSearchParams(window.location.search).get("adminTab"));
-  if (!requestedTab) return "overview";
-  if (requestedTab === "user-management" && !isAdmin) return "overview";
+  if (!requestedTab) return "dashboard";
+  if ((requestedTab === "user-management" || requestedTab === "teacher-linking") && !isAdmin) return "dashboard";
   return requestedTab;
 }
 
 function normalizeAdminTab(value: string | null): AdminTab | null {
   if (
+    value === "dashboard" ||
     value === "overview" ||
+    value === "session-history" ||
     value === "user-management" ||
     value === "teacher-linking" ||
     value === "reports" ||
@@ -4630,7 +4669,7 @@ function normalizeAdminTab(value: string | null): AdminTab | null {
     value === "rooms" ||
     value === "sessions-classes"
   ) {
-    return value;
+    return value === "overview" ? "dashboard" : value;
   }
 
   return null;
@@ -4639,7 +4678,7 @@ function normalizeAdminTab(value: string | null): AdminTab | null {
 function syncAdminTabToUrl(activeTab: AdminTab) {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
-  if (activeTab === "overview") {
+  if (activeTab === "dashboard") {
     url.searchParams.delete("adminTab");
   } else {
     url.searchParams.set("adminTab", activeTab);

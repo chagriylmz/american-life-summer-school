@@ -1180,6 +1180,106 @@ select:focus {
   font-weight: 850;
 }
 
+.coordinator-workspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.coordinator-sidebar {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  background: #ffffff;
+  box-shadow: var(--shadow-soft);
+}
+
+.coordinator-sidebar-summary,
+.coordinator-sidebar-meta {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.coordinator-sidebar-summary strong {
+  color: var(--navy);
+  font-size: 0.94rem;
+}
+
+.coordinator-sidebar-meta {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  font-weight: 800;
+}
+
+.coordinator-sidebar-nav,
+.coordinator-sidebar-group {
+  display: grid;
+  gap: 6px;
+}
+
+.coordinator-sidebar-group + .coordinator-sidebar-group {
+  margin-top: 8px;
+}
+
+.coordinator-sidebar-group p {
+  margin: 0 0 2px;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.coordinator-sidebar-item {
+  width: 100%;
+  justify-content: flex-start;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 9px 10px;
+  color: var(--navy);
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.88rem;
+  font-weight: 850;
+  text-align: left;
+}
+
+.coordinator-sidebar-item:hover {
+  border-color: rgba(20, 130, 208, 0.18);
+  background: #f6f9fd;
+}
+
+.coordinator-sidebar-item:focus-visible {
+  outline: 3px solid rgba(20, 130, 208, 0.24);
+  outline-offset: 2px;
+}
+
+.coordinator-sidebar-item.active {
+  border-color: rgba(20, 130, 208, 0.3);
+  color: var(--navy);
+  background: #edf6ff;
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+.coordinator-workspace-content,
+.coordinator-workspace-content > div:not([hidden]) {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.coordinator-workspace-content > [hidden] {
+  display: none;
+}
+
 .administration-body {
   display: grid;
   gap: 16px;
@@ -2439,6 +2539,40 @@ select:focus {
 
   .admin-summary {
     justify-content: flex-start;
+  }
+
+  .coordinator-workspace {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .coordinator-sidebar {
+    position: static;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .coordinator-sidebar-nav {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+
+  .coordinator-sidebar-group {
+    flex: 0 0 min(220px, 78vw);
+    align-content: start;
+  }
+
+  .coordinator-sidebar-item {
+    min-height: 40px;
+  }
+
+  .coordinator-sidebar-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
   }
 
   .administration-body {
