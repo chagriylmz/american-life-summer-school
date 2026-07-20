@@ -2004,7 +2004,10 @@ function CoordinatorDashboard({
                   type="button"
                   onClick={() => setActiveAdminTab(item.id)}
                 >
-                  {item.label}
+                  <span className="coordinator-sidebar-icon" aria-hidden="true">
+                    <DashboardIcon name={getAdminNavIcon(item.id)} />
+                  </span>
+                  <span>{item.label}</span>
                 </button>
               );
             })}
@@ -2030,23 +2033,19 @@ function CoordinatorDashboard({
             </section>
 
             <section className="dashboard-kpi-grid" aria-label="Today's overview">
-              <DashboardStatCard icon="CAL" label="Sessions Today" value={stats?.todaySessionCount ?? 0} subtitle="Scheduled lessons" />
-              <DashboardStatCard icon="ON" label="Active Sessions" value={activeSessions.length} subtitle="Currently open" />
-              <DashboardStatCard icon="OK" label="Completed Sessions" value={completedSessions.length} subtitle="Finished today" />
-              <DashboardStatCard icon="UP" label="Upcoming / Not Started" value={upcomingSessions.length} subtitle="Awaiting start" />
-              <DashboardStatCard icon="%" label="Attendance Rate" value={getAttendanceRateLabel(todaySessions)} subtitle={`${dashboardAttendanceTotals.marked}/${dashboardAttendanceTotals.expected} marked`} />
-              <DashboardStatCard icon="NT" label="Lesson Notes Submitted" value={`${notesSubmitted}/${todaySessions.length}`} subtitle={`${missingNotes} pending`} />
-              <DashboardStatCard icon="!" label="Alerts" value={alerts.length} subtitle={alerts.length === 0 ? "All clear" : "Need review"} />
+              <DashboardStatCard icon="calendar" tone="blue" label="Sessions Today" value={stats?.todaySessionCount ?? 0} subtitle="Scheduled lessons" />
+              <DashboardStatCard icon="broadcast" tone="green" label="Active Sessions" value={activeSessions.length} subtitle="Currently open" />
+              <DashboardStatCard icon="check" tone="purple" label="Completed Sessions" value={completedSessions.length} subtitle="Finished today" />
+              <DashboardStatCard icon="clock" tone="orange" label="Upcoming / Not Started" value={upcomingSessions.length} subtitle="Awaiting start" />
+              <DashboardStatCard icon="percent" tone="cyan" label="Attendance Rate" value={getAttendanceRateLabel(todaySessions)} subtitle={`${dashboardAttendanceTotals.marked}/${dashboardAttendanceTotals.expected} marked`} />
+              <DashboardStatCard icon="note" tone="blue" label="Lesson Notes Submitted" value={`${notesSubmitted} / ${todaySessions.length}`} subtitle={`${missingNotes} pending`} />
+              <DashboardStatCard icon="bell" tone="red" label="Alerts" value={alerts.length} subtitle={alerts.length === 0 ? "All clear" : "Need review"} />
             </section>
-
-      <GlobalStudentSearch
-        resultsSource={globalStudentSearchSource}
-        onOpenStudentProfile={onOpenStudentProfile}
-      />
 
             <section className="dashboard-main-grid" aria-label="Coordinator operations">
               <DashboardPanel
-                title="Live Sessions Today"
+                className="dashboard-live-panel"
+                title="Live Sessions (Today)"
                 subtitle={`${filteredTodaySessions.length} of ${todaySessions.length} sessions`}
                 actionLabel="View All"
                 onAction={() => setActiveAdminTab("live-sessions")}
@@ -2057,91 +2056,87 @@ function CoordinatorDashboard({
                   <p className="muted">No sessions match this search.</p>
                 ) : (
                   <div className="dashboard-session-list">
-                    {filteredTodaySessions.slice(0, 5).map((item) => (
+                    {filteredTodaySessions.slice(0, 7).map((item) => (
                       <DashboardSessionRow item={item} key={item.id} />
                     ))}
                   </div>
                 )}
               </DashboardPanel>
 
-              <DashboardPanel
-                title="Attention Needed"
-                subtitle={`${attentionNeededItems.length} flagged students`}
-                actionLabel="View Queue"
-                onAction={() => setActiveAdminTab("attention-needed")}
-              >
-                {attentionNeededItems.length === 0 ? (
-                  <p className="muted">No students need attention right now.</p>
-                ) : (
-                  <div className="dashboard-attention-groups">
-                    {dashboardAttentionGroups.map((group) => (
-                      <article className="dashboard-attention-group" key={group.label}>
-                        <strong>{group.label}</strong>
-                        <span>{group.count} student{group.count === 1 ? "" : "s"}</span>
-                      </article>
-                    ))}
+              <div className="dashboard-center-stack">
+                <DashboardPanel
+                  title="Attention Needed"
+                  subtitle={`${attentionNeededItems.length} flagged students`}
+                  actionLabel="View Queue"
+                  onAction={() => setActiveAdminTab("attention-needed")}
+                >
+                  {attentionNeededItems.length === 0 ? (
+                    <p className="muted">No students need attention right now.</p>
+                  ) : (
+                    <div className="dashboard-attention-groups">
+                      {dashboardAttentionGroups.slice(0, 3).map((group, index) => (
+                        <DashboardAttentionGroup group={group} index={index} key={group.label} />
+                      ))}
+                    </div>
+                  )}
+                  <div className="dashboard-note-strip">
+                    <span>Lesson Notes</span>
+                    <strong>{notesSubmitted}<small>submitted</small></strong>
+                    <strong>{missingNotes}<small>pending</small></strong>
                   </div>
-                )}
-                <div className="dashboard-note-strip">
-                  <span>Lesson Notes</span>
-                  <strong>{notesSubmitted} submitted</strong>
-                  <span>{missingNotes} pending</span>
-                </div>
-              </DashboardPanel>
+                </DashboardPanel>
 
-              <DashboardPanel title="Today's Schedule" subtitle={`${todayScheduleRows.length} time blocks`}>
-                {todayScheduleRows.length === 0 ? (
-                  <p className="muted">No schedule blocks for today.</p>
-                ) : (
-                  <div className="dashboard-schedule-list">
-                    {todayScheduleRows.map((row) => (
-                      <article className="dashboard-schedule-row" key={row.timeLabel}>
-                        <strong>{row.timeLabel}</strong>
-                        <span>{row.sessionCount} session{row.sessionCount === 1 ? "" : "s"}</span>
-                        <span>{row.rooms}</span>
-                      </article>
-                    ))}
+                <DashboardPanel
+                  title="Recent Activity"
+                  subtitle={`${recentActivityLogs.length} latest actions`}
+                  actionLabel="View Activity Feed"
+                  onAction={() => setActiveAdminTab("activity-feed")}
+                >
+                  {recentActivityLogs.length === 0 ? (
+                    <p className="muted">No activity recorded yet.</p>
+                  ) : (
+                    <div className="dashboard-activity-list">
+                      {recentActivityLogs.map((log) => (
+                        <DashboardActivityRow
+                          item={log}
+                          key={log.id}
+                          sessionById={sessionById}
+                          teacherById={teacherById}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <button className="secondary dashboard-panel-full-action" type="button" onClick={() => setActiveAdminTab("activity-feed")}>
+                    View all activity
+                  </button>
+                </DashboardPanel>
+              </div>
+
+              <div className="dashboard-right-stack">
+                <DashboardPanel title="Today's Schedule" subtitle={`${todayScheduleRows.length} time blocks`}>
+                  {todayScheduleRows.length === 0 ? (
+                    <p className="muted">No schedule blocks for today.</p>
+                  ) : (
+                    <div className="dashboard-schedule-list">
+                      {todayScheduleRows.map((row) => (
+                        <DashboardScheduleRow row={row} key={row.timeLabel} />
+                      ))}
+                    </div>
+                  )}
+                  <button className="secondary dashboard-panel-full-action" type="button" onClick={() => setActiveAdminTab("session-history")}>
+                    <DashboardIcon name="calendar" /> View full schedule
+                  </button>
+                </DashboardPanel>
+
+                <DashboardPanel title="Quick Actions">
+                  <div className="dashboard-quick-actions">
+                    <QuickActionButton icon="chart" label="Reports" description="View analytics and export data" onClick={() => setActiveAdminTab("reports")} />
+                    <QuickActionButton icon="users" label="Student Records" description="Search and manage student profiles" onClick={() => setActiveAdminTab("student-records")} />
+                    <QuickActionButton icon="edit" label="Retroactive Attendance" description="Mark attendance for past sessions" onClick={() => setActiveAdminTab("retroactive-attendance")} />
+                    <QuickActionButton icon="plus" label="Add Note" description="Add a short note to a session" onClick={() => setActiveAdminTab("live-sessions")} />
                   </div>
-                )}
-                <div className="dashboard-quick-actions">
-                  <QuickActionButton label="Reports" onClick={() => setActiveAdminTab("reports")} />
-                  <QuickActionButton label="Student Records" onClick={() => setActiveAdminTab("student-records")} />
-                  <QuickActionButton label="Session History" onClick={() => setActiveAdminTab("session-history")} />
-                </div>
-              </DashboardPanel>
-            </section>
-
-            <section className="dashboard-bottom-grid" aria-label="Daily operations detail">
-              <DashboardPanel title="Today's Overview" subtitle="Attendance totals">
-                <div className="dashboard-mini-stats">
-                  <span><strong>{dashboardAttendanceTotals.expected}</strong> Expected</span>
-                  <span><strong>{dashboardAttendanceTotals.present}</strong> Present</span>
-                  <span><strong>{dashboardAttendanceTotals.late}</strong> Late</span>
-                  <span><strong>{dashboardAttendanceTotals.absent}</strong> Absent</span>
-                </div>
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Recent Activity"
-                subtitle={`${recentActivityLogs.length} latest actions`}
-                actionLabel="View Activity Feed"
-                onAction={() => setActiveAdminTab("activity-feed")}
-              >
-                {recentActivityLogs.length === 0 ? (
-                  <p className="muted">No activity recorded yet.</p>
-                ) : (
-                  <div className="dashboard-activity-list">
-                    {recentActivityLogs.map((log) => (
-                      <DashboardActivityRow
-                        item={log}
-                        key={log.id}
-                        sessionById={sessionById}
-                        teacherById={teacherById}
-                      />
-                    ))}
-                  </div>
-                )}
-              </DashboardPanel>
+                </DashboardPanel>
+              </div>
             </section>
           </div>
 
@@ -2410,8 +2405,11 @@ function AdministrationOverviewPanel({
 function DashboardInfoCard({ label, value }: { label: string; value: string }) {
   return (
     <article className="dashboard-info-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
+      <DashboardIcon name={label === "Summer School" ? "calendar" : "clock"} />
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
     </article>
   );
 }
@@ -2420,16 +2418,20 @@ function DashboardStatCard({
   icon,
   label,
   subtitle,
+  tone,
   value,
 }: {
-  icon: string;
+  icon: DashboardIconName;
   label: string;
   subtitle: string;
+  tone: "blue" | "green" | "purple" | "orange" | "cyan" | "red";
   value: number | string;
 }) {
   return (
     <article className="dashboard-stat-card">
-      <span className="dashboard-stat-icon" aria-hidden="true">{icon}</span>
+      <span className={`dashboard-stat-icon ${tone}`} aria-hidden="true">
+        <DashboardIcon name={icon} />
+      </span>
       <span>{label}</span>
       <strong>{value}</strong>
       <small>{subtitle}</small>
@@ -2440,18 +2442,20 @@ function DashboardStatCard({
 function DashboardPanel({
   actionLabel,
   children,
+  className,
   onAction,
   subtitle,
   title,
 }: {
   actionLabel?: string;
   children: ReactNode;
+  className?: string;
   onAction?: () => void;
   subtitle?: string;
   title: string;
 }) {
   return (
-    <section className="dashboard-panel">
+    <section className={className ? `dashboard-panel ${className}` : "dashboard-panel"}>
       <div className="dashboard-panel-heading">
         <div>
           <h3>{title}</h3>
@@ -2472,27 +2476,83 @@ function DashboardSessionRow({ item }: { item: SummerSession }) {
   const lifecycle = getLifecycleStatus(item);
   const counts = getAttendanceCounts(item);
   const noteDone = item.note.trim().length > 0;
+  const attendanceLabel = `${counts.marked}/${item.students.length} marked`;
 
   return (
     <article className="dashboard-session-row">
       <span className="teacher-avatar compact-avatar" aria-hidden="true">{getInitials(item.teacherName)}</span>
-      <div>
+      <div className="dashboard-session-identity">
         <strong>{item.teacherName}</strong>
-        <span>{formatTime(item.startsAt)}-{formatTime(item.endsAt)} - {item.location ?? "Room not set"}</span>
+        <span>{formatTime(item.startsAt)} - {formatTime(item.endsAt)} <b>•</b> {item.location ?? "Room not set"}</span>
+        <small>{noteDone ? "Note submitted" : "Note missing"}</small>
       </div>
-      <div className="dashboard-row-badges">
+      <div className="dashboard-session-status">
         <span className={`status-badge ${lifecycle.kind}`}>{lifecycle.label}</span>
-        <span>{counts.marked}/{item.students.length} marked</span>
-        <span>{noteDone ? "Note submitted" : "Note missing"}</span>
+        <strong>{attendanceLabel}</strong>
       </div>
     </article>
   );
 }
 
-function QuickActionButton({ label, onClick }: { label: string; onClick: () => void }) {
+function DashboardAttentionGroup({
+  group,
+  index,
+}: {
+  group: { label: string; count: number };
+  index: number;
+}) {
+  const tone = index === 0 ? "red" : index === 1 ? "orange" : "amber";
+
+  return (
+    <article className="dashboard-attention-group">
+      <span className={`dashboard-attention-icon ${tone}`} aria-hidden="true">
+        <DashboardIcon name="users" />
+      </span>
+      <strong>{group.label}</strong>
+      <span className="dashboard-attention-count">
+        <b>{group.count}</b>
+        {group.count === 1 ? "student" : "students"}
+      </span>
+      <span className="dashboard-chevron" aria-hidden="true">›</span>
+    </article>
+  );
+}
+
+function DashboardScheduleRow({
+  row,
+}: {
+  row: { timeLabel: string; sessionCount: number; rooms: string[] };
+}) {
+  return (
+    <article className="dashboard-schedule-row">
+      <span className="dashboard-schedule-icon" aria-hidden="true">
+        <DashboardIcon name="clock" />
+      </span>
+      <strong>{row.timeLabel}</strong>
+      <span>{row.sessionCount} session{row.sessionCount === 1 ? "" : "s"}</span>
+      <small>{row.rooms.join("\n")}</small>
+      <span className="dashboard-chevron" aria-hidden="true">›</span>
+    </article>
+  );
+}
+
+function QuickActionButton({
+  description,
+  icon,
+  label,
+  onClick,
+}: {
+  description?: string;
+  icon?: DashboardIconName;
+  label: string;
+  onClick: () => void;
+}) {
   return (
     <button className="secondary dashboard-quick-action" type="button" onClick={onClick}>
-      {label}
+      {icon && <span className={`dashboard-quick-icon ${icon}`} aria-hidden="true"><DashboardIcon name={icon} /></span>}
+      <strong>{label}</strong>
+      {description && <span>{description}</span>}
+      <small aria-hidden="true">›</small>
     </button>
   );
 }
@@ -2511,11 +2571,156 @@ function DashboardActivityRow({
   return (
     <article className="dashboard-activity-row">
       <time>{formatActivityTime(item.created_at)}</time>
+      <span className="dashboard-activity-icon" aria-hidden="true">
+        <DashboardIcon name={item.action_type === "lesson_note_saved" ? "note" : "check"} />
+      </span>
       <strong>{display.teacherName}</strong>
       <span>{getActivityLabel(item.action_type)}</span>
       <small>{display.sessionLabel}</small>
+      <span className="dashboard-chevron" aria-hidden="true">›</span>
     </article>
   );
+}
+
+type DashboardIconName =
+  | "bell"
+  | "broadcast"
+  | "calendar"
+  | "chart"
+  | "check"
+  | "clock"
+  | "edit"
+  | "attendance"
+  | "history"
+  | "home"
+  | "note"
+  | "percent"
+  | "plus"
+  | "settings"
+  | "users";
+
+function DashboardIcon({ name }: { name: DashboardIconName }) {
+  if (name === "calendar") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7 3v4M17 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
+        <path d="M8 13h3M13 13h3M8 16h3" />
+      </svg>
+    );
+  }
+  if (name === "home") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m3 11 9-8 9 8" />
+        <path d="M5 10v10h5v-6h4v6h5V10" />
+      </svg>
+    );
+  }
+  if (name === "history") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 12h5M16 12h5M8 6h8M8 18h8" />
+        <path d="M8 8v8M16 8v8" />
+      </svg>
+    );
+  }
+  if (name === "attendance") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 4h14v16H5z" />
+        <path d="M8 8h8M8 12h3M14 12l1.5 1.5L19 10M8 16h8" />
+      </svg>
+    );
+  }
+  if (name === "broadcast") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M8 9a5 5 0 0 0 0 6M5 6a9 9 0 0 0 0 12M16 9a5 5 0 0 1 0 6M19 6a9 9 0 0 1 0 12M12 12h.01" />
+      </svg>
+    );
+  }
+  if (name === "check") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M20 6 9 17l-5-5" />
+        <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      </svg>
+    );
+  }
+  if (name === "clock") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v6l4 2" />
+      </svg>
+    );
+  }
+  if (name === "percent") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m19 5-14 14" />
+        <circle cx="7" cy="7" r="2.5" />
+        <circle cx="17" cy="17" r="2.5" />
+      </svg>
+    );
+  }
+  if (name === "note") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7 3h8l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+        <path d="M15 3v5h5M8 13h8M8 17h6" />
+      </svg>
+    );
+  }
+  if (name === "bell") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+        <path d="M10 21h4" />
+      </svg>
+    );
+  }
+  if (name === "users") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M16 19v-1a4 4 0 0 0-8 0v1" />
+        <circle cx="12" cy="10" r="3" />
+        <path d="M22 19v-1a4 4 0 0 0-3-3.87M19 7a3 3 0 0 1 0 6M2 19v-1a4 4 0 0 1 3-3.87M5 7a3 3 0 0 0 0 6" />
+      </svg>
+    );
+  }
+  if (name === "chart") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 19V9M12 19V5M19 19v-7" />
+      </svg>
+    );
+  }
+  if (name === "edit") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m4 20 4-1 11-11-3-3L5 16l-1 4Z" />
+        <path d="m14 6 4 4" />
+      </svg>
+    );
+  }
+  if (name === "plus") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+    );
+  }
+  if (name === "settings") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
+        <path d="M4.9 9.5 3.8 7.6l2.1-3.5 2.2.8M19.1 9.5l1.1-1.9-2.1-3.5-2.2.8M4.9 14.5l-1.1 1.9 2.1 3.5 2.2-.8M19.1 14.5l1.1 1.9-2.1 3.5-2.2-.8" />
+      </svg>
+    );
+  }
+
+  return null;
 }
 
 function GlobalStudentSearch({
@@ -5084,9 +5289,9 @@ function getTodayScheduleRows(sessions: SummerSession[]) {
 
 function getCompactRoomList(sessions: SummerSession[]) {
   const rooms = Array.from(new Set(sessions.map((item) => item.location).filter(Boolean))) as string[];
-  if (rooms.length === 0) return "Rooms not set";
-  if (rooms.length <= 3) return rooms.join(", ");
-  return `${rooms.slice(0, 3).join(", ")} +${rooms.length - 3}`;
+  if (rooms.length === 0) return ["Rooms not set"];
+  if (rooms.length <= 3) return rooms;
+  return [...rooms.slice(0, 3), `Room +${rooms.length - 3}`];
 }
 
 function formatAttentionReasonLabel(reason: AttentionReason) {
@@ -5269,6 +5474,17 @@ function isSidebarAdminItemActive(itemId: AdminTab, activeTab: AdminTab) {
   if (itemId === activeTab) return true;
   if (itemId !== "administration") return false;
   return ["user-management", "teacher-linking", "student-management", "teachers", "rooms", "sessions-classes"].includes(activeTab);
+}
+
+function getAdminNavIcon(tab: AdminTab): DashboardIconName {
+  if (tab === "dashboard") return "home";
+  if (tab === "live-sessions") return "calendar";
+  if (tab === "session-history") return "history";
+  if (tab === "retroactive-attendance") return "attendance";
+  if (tab === "student-records") return "users";
+  if (tab === "attention-needed") return "bell";
+  if (tab === "reports") return "note";
+  return "settings";
 }
 
 function syncAdminTabToUrl(activeTab: AdminTab) {
