@@ -4,7 +4,7 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabaseClient";
 import { validatePasswordChangeInput } from "./lib/passwordValidation";
 import type { PasswordChangeInput } from "./lib/passwordValidation";
-import { getDateOffset, getPreviousSummerSchoolDate } from "./lib/summerSchoolCalendar";
+import { getDateOffset, isSummerSchoolActiveDate } from "./lib/summerSchoolCalendar";
 
 type UserRole = "admin" | "staff" | "teacher" | "student";
 type AttendanceStatus = "present" | "late" | "absent" | "excused";
@@ -51,6 +51,8 @@ const RETRO_ATTENDANCE_SAVE_ERROR_MESSAGE =
 const UNEXPECTED_SAVE_ERROR_MESSAGE =
   "An unexpected error occurred while saving. Please try again or contact the coordinator.";
 const GLOBAL_STUDENT_SEARCH_LIMIT = 10;
+const SUMMER_SCHOOL_START_DATE = "2026-07-06";
+const SUMMER_SCHOOL_END_DATE = "2026-08-12";
 
 type UserProfile = {
   id: string;
@@ -208,8 +210,6 @@ type ActivityFeedItem =
       logs: ActivityLogRow[];
       expanded: boolean;
     };
-
-type HistoryFilter = "today" | "yesterday" | "week" | "all";
 
 type RoomRecord = {
   key: string;
@@ -1821,7 +1821,7 @@ function CoordinatorDashboard({
   const [roomSearch, setRoomSearch] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("today");
+  const [historyDate, setHistoryDate] = useState(() => getDefaultSummerSchoolHistoryDate(getTodayDate()));
   const [reportDate, setReportDate] = useState(() => getTodayDate());
   const isAdmin = isAdminProfile(profile);
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>(() => getInitialAdminTab(isAdmin));
@@ -1870,9 +1870,8 @@ function CoordinatorDashboard({
   const upcomingSessions = todaySessions.filter((item) => !item.startedAt && !item.finishedAt);
   const notesSubmitted = todaySessions.filter((item) => item.note.trim().length > 0).length;
   const alerts = getCoordinatorAlerts(todaySessions);
-  const historySessions = getHistorySessions(sessions, historyFilter);
-  const historyDateContext = getHistoryDateContext(historySessions);
-  const showHistoryDateOnCards = historyDateContext.kind === "multiple";
+  const historySessions = getHistorySessionsByDate(sessions, historyDate);
+  const historyDateLabel = formatLessonDateWithWeekday(historyDate);
   const firstName = getFirstName(profile.full_name);
   const administrationNavGroups = useMemo(() => getAdministrationNavGroups(isAdmin), [isAdmin]);
   const administrationNavItems = useMemo(
@@ -2024,34 +2023,27 @@ function CoordinatorDashboard({
           <div hidden={activeAdminTab !== "session-history"}>
       <section className="session-group">
         <div className="live-session-toolbar">
-          <div className="section-heading compact">
-            <h3>Session History</h3>
-            <p>{historySessions.length} sessions in view</p>
-          </div>
-          <div className="history-filter" aria-label="Session history filters">
-            {([
-              ["today", "Today"],
-              ["yesterday", "Last Session"],
-              ["week", "This Week"],
-              ["all", "All Summer School"],
-            ] as const).map(([value, label]) => (
-              <button
-                className={historyFilter === value ? "chip selected" : "chip"}
-                key={value}
-                type="button"
-                onClick={() => setHistoryFilter(value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+              <div className="section-heading compact">
+                <h3>Session History</h3>
+                <p>{historySessions.length} sessions on {historyDateLabel}</p>
+              </div>
+              <label className="search-field compact-search history-date-picker">
+                <span>Select lesson date</span>
+                <input
+                  type="date"
+                  value={historyDate}
+                  min={SUMMER_SCHOOL_START_DATE}
+                  max={SUMMER_SCHOOL_END_DATE}
+                  onChange={(event) => setHistoryDate(event.target.value)}
+                />
+              </label>
+            </div>
+        <div className="history-results-context">
+          Showing sessions for {historyDateLabel}. Summer School runs through {formatLessonDateWithWeekday(SUMMER_SCHOOL_END_DATE)}.
         </div>
-        {historyDateContext.kind === "single" && (
-          <div className="history-results-context">Showing sessions for {historyDateContext.label}</div>
-        )}
         {historySessions.length === 0 ? (
           <div className="panel">
-            <p className="muted">No sessions found for this history filter.</p>
+            <p className="muted">No Summer School sessions found for this selected date.</p>
           </div>
         ) : (
           <div className="session-tracker session-card-grid session-history-grid">
@@ -2066,7 +2058,6 @@ function CoordinatorDashboard({
                 activityLogs={activityLogs}
                 onOpenStudentProfile={onOpenStudentProfile}
                 compact
-                showLessonDate={showHistoryDateOnCards}
               />
             ))}
           </div>
@@ -5752,44 +5743,31 @@ function getCoordinatorAlerts(todaySessions: SummerSession[]) {
   });
 }
 
-function getHistorySessions(sessions: SummerSession[], filter: HistoryFilter) {
-  const today = getTodayDate();
-  const yesterday = getPreviousSummerSchoolDate(today);
-  const weekStart = getWeekStartDate(today);
-  const filtered = sessions.filter((item) => {
-    if (filter === "today") return item.lessonDate === today;
-    if (filter === "yesterday") return item.lessonDate === yesterday;
-    if (filter === "week") return item.lessonDate >= weekStart && item.lessonDate <= today;
-    return true;
-  });
-
-  return filtered.sort((a, b) => {
-    const dateCompare = b.lessonDate.localeCompare(a.lessonDate);
-    if (dateCompare !== 0) return dateCompare;
-    return `${a.startsAt}-${a.teacherName}`.localeCompare(`${b.startsAt}-${b.teacherName}`);
-  });
+function getHistorySessionsByDate(sessions: SummerSession[], selectedDate: string) {
+  return sessions
+    .filter((item) => item.lessonDate === selectedDate)
+    .sort((a, b) => `${a.startsAt}-${a.teacherName}`.localeCompare(`${b.startsAt}-${b.teacherName}`));
 }
 
-function getHistoryDateContext(sessions: SummerSession[]) {
-  const lessonDates = [...new Set(sessions.map((item) => item.lessonDate))];
-  if (lessonDates.length === 1) {
-    return {
-      kind: "single" as const,
-      label: formatLessonDateWithWeekday(lessonDates[0]),
-    };
+function getDefaultSummerSchoolHistoryDate(today: string) {
+  if (today < SUMMER_SCHOOL_START_DATE) return SUMMER_SCHOOL_START_DATE;
+  if (today > SUMMER_SCHOOL_END_DATE) return getMostRecentSummerSchoolDateOnOrBefore(SUMMER_SCHOOL_END_DATE);
+  return getMostRecentSummerSchoolDateOnOrBefore(today);
+}
+
+function getMostRecentSummerSchoolDateOnOrBefore(dateValue: string) {
+  for (let offset = 0; offset >= -7; offset -= 1) {
+    const candidate = getDateOffset(dateValue, offset);
+    if (
+      candidate >= SUMMER_SCHOOL_START_DATE &&
+      candidate <= SUMMER_SCHOOL_END_DATE &&
+      isSummerSchoolActiveDate(candidate)
+    ) {
+      return candidate;
+    }
   }
 
-  return {
-    kind: lessonDates.length > 1 ? ("multiple" as const) : ("none" as const),
-  };
-}
-
-function getWeekStartDate(dateValue: string) {
-  const date = new Date(`${dateValue}T00:00:00`);
-  const day = date.getDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  date.setDate(date.getDate() + mondayOffset);
-  return date.toISOString().slice(0, 10);
+  return SUMMER_SCHOOL_START_DATE;
 }
 
 function getActiveSessions(sessions: SummerSession[]) {

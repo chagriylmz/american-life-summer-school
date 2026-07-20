@@ -1045,6 +1045,14 @@ select:focus {
   justify-content: flex-end;
 }
 
+.history-date-picker {
+  max-width: 240px;
+}
+
+.history-date-picker input {
+  min-width: 0;
+}
+
 .session-history-grid .session-tracker-row {
   box-shadow: 0 10px 28px rgba(12, 36, 65, 0.06);
 }
@@ -2657,6 +2665,10 @@ select:focus {
 
   .compact-search {
     width: 100%;
+  }
+
+  .history-date-picker {
+    max-width: none;
   }
 
   .student-record-layout,
