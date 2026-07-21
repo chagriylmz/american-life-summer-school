@@ -456,6 +456,8 @@ function App() {
   const [teacherLinkingMessage, setTeacherLinkingMessage] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedProfileStudentId, setSelectedProfileStudentId] = useState<string | null>(null);
+  const [teacherRosterMessage, setTeacherRosterMessage] = useState<string | null>(null);
+  const [highlightedRosterStudentIds, setHighlightedRosterStudentIds] = useState<string[]>([]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(true);
@@ -578,6 +580,13 @@ function App() {
   }, [profile?.role, session?.user.id]);
 
   useEffect(() => {
+    if (profile?.role !== "teacher" || !selectedSession) return;
+    if (!canTeacherEditLiveSession(selectedSession)) return;
+
+    void refreshTeacherSessionRoster(selectedSession, { source: "open" });
+  }, [profile?.role, selectedSessionId]);
+
+  useEffect(() => {
     if (!selectedProfileStudentId) return;
     const canStillSeeStudent = studentProfileSessions.some((item) =>
       item.students.some((student) => student.id === selectedProfileStudentId),
@@ -624,6 +633,12 @@ function App() {
     if (activityError) {
       console.error("[User activity] Could not record activity timestamp", activityError);
     }
+  }
+
+  function selectTeacherSession(lessonId: string) {
+    setSelectedSessionId(lessonId);
+    setTeacherRosterMessage(null);
+    setHighlightedRosterStudentIds([]);
   }
 
   async function loadSignedInUser(userId: string) {
@@ -1322,7 +1337,9 @@ function App() {
         throw new Error(getClientErrorMessage(createError, "Could not create this student."));
       }
 
+      const activeSessionWarning = getActiveSessionEnrollmentWarning(coordinatorSessions, input.classId, input.joinedAt);
       await loadCoordinatorDashboard();
+      return activeSessionWarning;
     } finally {
       setActionLoading(false);
     }
@@ -1347,7 +1364,9 @@ function App() {
         throw new Error(getClientErrorMessage(enrollError, "Could not enroll this student."));
       }
 
+      const activeSessionWarning = getActiveSessionEnrollmentWarning(coordinatorSessions, input.classId, input.joinedAt);
       await loadCoordinatorDashboard();
+      return activeSessionWarning;
     } finally {
       setActionLoading(false);
     }
@@ -1487,9 +1506,10 @@ function App() {
 
     const { data: enrollmentRows, error: enrollmentError } = await supabase
       .from("class_students")
-      .select("class_id, student_id")
+      .select("class_id, student_id, status, joined_at, left_at")
       .eq("class_id", item.classId)
-      .eq("status", "active");
+      .lte("joined_at", item.lessonDate)
+      .or(`left_at.is.null,left_at.gte.${item.lessonDate}`);
 
     if (enrollmentError) {
       setError(`Could not load students for attendance: ${enrollmentError.message}`);
@@ -1498,6 +1518,7 @@ function App() {
     }
 
     const studentIds = ((enrollmentRows ?? []) as ClassStudentRow[])
+      .filter((row) => isEnrollmentActiveForLesson(row, item.lessonDate))
       .map((row) => row.student_id)
       .filter(Boolean);
 
@@ -1543,6 +1564,175 @@ function App() {
     return true;
   }
 
+  async function refreshTeacherSessionRoster(
+    item: SummerSession,
+    options: { source: "open" | "manual" | "focus" | "finish" },
+  ) {
+    if (profile?.role !== "teacher" || !teacher?.id || item.teacherId !== teacher.id || !canTeacherEditLiveSession(item)) {
+      return { session: item, addedStudents: [] as SessionStudent[], removedStudentIds: [] as string[], changed: false, error: null };
+    }
+
+    const { session: refreshedSession, error: refreshError } = await loadCanonicalLessonRoster(item);
+    if (refreshError || !refreshedSession) {
+      console.error("[Teacher roster refresh] Could not refresh lesson roster", {
+        lessonId: item.id,
+        source: options.source,
+        error: refreshError,
+      });
+      if (options.source === "manual" || options.source === "finish") {
+        setError(refreshError ?? "Could not refresh the student list.");
+      }
+      return {
+        session: item,
+        addedStudents: [] as SessionStudent[],
+        removedStudentIds: [] as string[],
+        changed: false,
+        error: refreshError ?? "Could not refresh the student list.",
+      };
+    }
+
+    const previousStudentIds = new Set(item.students.map((student) => student.id));
+    const refreshedStudentIds = new Set(refreshedSession.students.map((student) => student.id));
+    const addedStudents = refreshedSession.students.filter((student) => !previousStudentIds.has(student.id));
+    const removedStudentIds = item.students
+      .filter((student) => !refreshedStudentIds.has(student.id))
+      .map((student) => student.id);
+    const changed = addedStudents.length > 0 || removedStudentIds.length > 0;
+
+    applyTeacherSessionRosterRefresh(refreshedSession);
+
+    if (options.source === "manual" || options.source === "finish") {
+      setError(null);
+    }
+
+    if (addedStudents.length > 0) {
+      setHighlightedRosterStudentIds(addedStudents.map((student) => student.id));
+    } else if (options.source === "manual") {
+      setHighlightedRosterStudentIds([]);
+    }
+
+    if (options.source === "manual") {
+      setTeacherRosterMessage(
+        addedStudents.length > 0
+          ? `Student list updated. ${addedStudents.length} new student${addedStudents.length === 1 ? "" : "s"} added.`
+          : "Student list is already up to date.",
+      );
+    }
+
+    if (options.source === "finish" && addedStudents.length > 0) {
+      setTeacherRosterMessage("The class list changed. Complete attendance for the newly added student(s).");
+    }
+
+    return { session: refreshedSession, addedStudents, removedStudentIds, changed, error: null };
+  }
+
+  async function loadCanonicalLessonRoster(item: SummerSession) {
+    const [lessonResult, classStudentsResult, attendanceResult, noteResult] = await Promise.all([
+      supabase
+        .from("lessons")
+        .select("id, class_id, teacher_id, lesson_date, starts_at, ends_at, title, status, started_at, finished_at")
+        .eq("id", item.id)
+        .maybeSingle(),
+      supabase
+        .from("class_students")
+        .select("class_id, student_id, status, joined_at, left_at")
+        .eq("class_id", item.classId)
+        .lte("joined_at", item.lessonDate)
+        .or(`left_at.is.null,left_at.gte.${item.lessonDate}`),
+      supabase
+        .from("attendance")
+        .select("id, lesson_id, class_id, student_id, status, notes, arrived_at")
+        .eq("lesson_id", item.id),
+      supabase
+        .from("lesson_notes")
+        .select("id, lesson_id, body")
+        .eq("lesson_id", item.id)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    const loadError = lessonResult.error || classStudentsResult.error || attendanceResult.error || noteResult.error;
+    if (loadError) {
+      return { session: null, error: loadError.message };
+    }
+
+    const lessonRow = lessonResult.data as LessonRow | null;
+    if (!lessonRow) {
+      return { session: null, error: "The selected lesson could not be found." };
+    }
+
+    if (lessonRow.teacher_id !== teacher?.id) {
+      return { session: null, error: "You can only refresh your own active session roster." };
+    }
+
+    const canonicalEnrollmentRows = ((classStudentsResult.data ?? []) as ClassStudentRow[]).filter((row) =>
+      isEnrollmentActiveForLesson(row, lessonRow.lesson_date),
+    );
+    const uniqueStudentIds = Array.from(new Set(canonicalEnrollmentRows.map((row) => row.student_id).filter(Boolean)));
+
+    const studentsResult = uniqueStudentIds.length
+      ? await supabase
+          .from("students")
+          .select("id, full_name, student_code, phone, guardian_phone, date_of_birth")
+          .in("id", uniqueStudentIds)
+      : { data: [] as StudentRow[], error: null };
+
+    if (studentsResult.error) {
+      return { session: null, error: studentsResult.error.message };
+    }
+
+    const attendanceByStudentId = new Map<string, AttendanceRow>();
+    for (const row of (attendanceResult.data ?? []) as AttendanceRow[]) {
+      if (!attendanceByStudentId.has(row.student_id)) {
+        attendanceByStudentId.set(row.student_id, row);
+      }
+    }
+
+    const studentById = new Map(((studentsResult.data ?? []) as StudentRow[]).map((student) => [student.id, student]));
+    const refreshedStudents = uniqueStudentIds
+      .map((studentId) => {
+        const student = studentById.get(studentId);
+        if (!student) return null;
+        const attendanceRow = attendanceByStudentId.get(student.id);
+        return {
+          id: student.id,
+          fullName: student.full_name,
+          studentCode: student.student_code,
+          phone: student.phone,
+          guardianPhone: student.guardian_phone,
+          birthYear: student.date_of_birth?.slice(0, 4) ?? null,
+          attendanceId: attendanceRow?.id ?? null,
+          attendanceStatus: attendanceRow?.status ?? null,
+          attendanceNotes: attendanceRow?.notes ?? null,
+          attendanceArrivedAt: attendanceRow?.arrived_at ?? null,
+        };
+      })
+      .filter((student): student is SessionStudent => Boolean(student))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName));
+
+    return {
+      session: {
+        ...item,
+        status: lessonRow.status,
+        startedAt: lessonRow.started_at,
+        finishedAt: lessonRow.finished_at,
+        students: refreshedStudents,
+        note: (noteResult.data as LessonNoteRow | null)?.body ?? "",
+      },
+      error: null,
+    };
+  }
+
+  function applyTeacherSessionRosterRefresh(refreshedSession: SummerSession) {
+    setTeacherProfileSessions((current) =>
+      current.map((sessionItem) => (sessionItem.id === refreshedSession.id ? refreshedSession : sessionItem)),
+    );
+    setTeacherSessions((current) =>
+      current.map((sessionItem) => (sessionItem.id === refreshedSession.id ? refreshedSession : sessionItem)),
+    );
+  }
+
   async function finishSession(item: SummerSession) {
     const canFinishForRole = isCoordinator ? canCoordinatorEditSessionRecord(item) : canTeacherEditLiveSession(item);
     if (!canFinishForRole) {
@@ -1550,12 +1740,25 @@ function App() {
       return;
     }
 
-    if (!hasCompletedAttendance(item)) {
+    let sessionToFinish = item;
+    if (!isCoordinator && canTeacherEditLiveSession(item)) {
+      const refreshResult = await refreshTeacherSessionRoster(item, { source: "finish" });
+      sessionToFinish = refreshResult.session;
+      if (refreshResult.error) {
+        return;
+      }
+      if (refreshResult.addedStudents.length > 0) {
+        setError(null);
+        return;
+      }
+    }
+
+    if (!hasCompletedAttendance(sessionToFinish)) {
       setError("Attendance must be completed before finishing the session.");
       return;
     }
 
-    if (item.note.trim().length === 0) {
+    if (sessionToFinish.note.trim().length === 0) {
       setError("Lesson note must be saved before finishing the session.");
       return;
     }
@@ -1563,9 +1766,9 @@ function App() {
     setActionLoading(true);
     setError(null);
 
-    if (!isCoordinator && canTeacherCompleteOverdueSession(item)) {
+    if (!isCoordinator && canTeacherCompleteOverdueSession(sessionToFinish)) {
       const { error: finishError } = await supabase.rpc("finish_teacher_unfinished_lesson", {
-        p_lesson_id: item.id,
+        p_lesson_id: sessionToFinish.id,
       });
 
       if (finishError) {
@@ -1575,6 +1778,9 @@ function App() {
         return;
       }
 
+      await logActivity("session_finished", sessionToFinish, {
+        late_completion: canTeacherCompleteOverdueSession(sessionToFinish),
+      });
       await refreshCurrentRoleData();
       setActionLoading(false);
       return;
@@ -1586,10 +1792,10 @@ function App() {
         finished_at: new Date().toISOString(),
         status: "completed",
       })
-      .eq("id", item.id)
+      .eq("id", sessionToFinish.id)
       .is("finished_at", null);
 
-    if (isCoordinator && isPastSession(item)) {
+    if (isCoordinator && isPastSession(sessionToFinish)) {
       // Coordinators may complete late-entry records without setting started_at.
     } else {
       finishQuery = finishQuery.not("started_at", "is", null);
@@ -1599,16 +1805,16 @@ function App() {
     if (updateError) {
       setError(updateError.message);
     } else {
-      await logActivity("session_finished", item, {
-        late_entry: isCoordinator && canUseLateEntry(item),
-        late_completion: !isCoordinator && canTeacherCompleteOverdueSession(item),
+      await logActivity("session_finished", sessionToFinish, {
+        late_entry: isCoordinator && canUseLateEntry(sessionToFinish),
+        late_completion: !isCoordinator && canTeacherCompleteOverdueSession(sessionToFinish),
       });
-      if (isCoordinator && canUseLateEntry(item)) {
-        await logActivity("late_entry_updated", item, { update_type: "session_finished" });
+      if (isCoordinator && canUseLateEntry(sessionToFinish)) {
+        await logActivity("late_entry_updated", sessionToFinish, { update_type: "session_finished" });
       }
     }
     await refreshCurrentRoleData();
-    setSelectedSessionId(item.id);
+    setSelectedSessionId(sessionToFinish.id);
     setActionLoading(false);
   }
 
@@ -2068,12 +2274,15 @@ function App() {
           selectedSession={selectedSession}
           selectedSessionId={selectedSessionId}
           actionLoading={actionLoading}
-          onSelectSession={setSelectedSessionId}
+          onSelectSession={selectTeacherSession}
           onStartSession={startSession}
           onFinishSession={finishSession}
           onMarkAttendance={markAttendance}
+          onRefreshStudentList={(item) => refreshTeacherSessionRoster(item, { source: "manual" })}
           onSaveNote={saveLessonNote}
           onOpenStudentProfile={setSelectedProfileStudentId}
+          rosterMessage={teacherRosterMessage}
+          highlightedStudentIds={highlightedRosterStudentIds}
         />
       )}
       {!isCoordinator && profile.role !== "teacher" && (
@@ -2245,8 +2454,8 @@ function CoordinatorDashboard({
   onCompleteUnstartedHistoricalSession: (item: SummerSession) => Promise<void>;
   onCancelUnstartedHistoricalSession: (item: SummerSession, reason: string) => Promise<void>;
   onMarkUnstartedHistoricalSessionNotHeld: (item: SummerSession, reason: string) => Promise<void>;
-  onCreateStudentWithEnrollment: (input: StudentCreateInput) => Promise<void>;
-  onEnrollExistingStudent: (input: StudentEnrollInput) => Promise<void>;
+  onCreateStudentWithEnrollment: (input: StudentCreateInput) => Promise<string | null>;
+  onEnrollExistingStudent: (input: StudentEnrollInput) => Promise<string | null>;
   onUpdateStudentDetails: (input: StudentUpdateInput) => Promise<void>;
   onTransferStudent: (input: {
     studentId: string;
@@ -4180,8 +4389,8 @@ function StudentManagementPanel({
 }: {
   actionLoading: boolean;
   classOptions: TransferClassOption[];
-  onCreateStudentWithEnrollment: (input: StudentCreateInput) => Promise<void>;
-  onEnrollExistingStudent: (input: StudentEnrollInput) => Promise<void>;
+  onCreateStudentWithEnrollment: (input: StudentCreateInput) => Promise<string | null>;
+  onEnrollExistingStudent: (input: StudentEnrollInput) => Promise<string | null>;
   onOpenStudentProfile: (studentId: string) => void;
   onTransferStudent: (input: {
     studentId: string;
@@ -4267,7 +4476,7 @@ function StudentManagementPanel({
     if (!canCreate) return;
     setMessage(null);
     try {
-      await onCreateStudentWithEnrollment({
+      const activeSessionWarning = await onCreateStudentWithEnrollment({
         fullName: createFullName.trim(),
         studentCode: createStudentCode.trim(),
         birthYear: createBirthYear.trim(),
@@ -4277,7 +4486,11 @@ function StudentManagementPanel({
         forceCreate,
       });
       setMessageType("success");
-      setMessage("Student created and enrolled successfully.");
+      setMessage(
+        activeSessionWarning
+          ? `Student created and enrolled successfully. ${activeSessionWarning}`
+          : "Student created and enrolled successfully.",
+      );
       resetCreateForm();
     } catch (createError) {
       setMessageType("error");
@@ -4290,13 +4503,17 @@ function StudentManagementPanel({
     if (!selectedRow || !canEnrollExisting) return;
     setMessage(null);
     try {
-      await onEnrollExistingStudent({
+      const activeSessionWarning = await onEnrollExistingStudent({
         studentId: selectedRow.studentId,
         classId: enrollClassId,
         joinedAt: enrollJoinedAt,
       });
       setMessageType("success");
-      setMessage("Existing student enrolled successfully.");
+      setMessage(
+        activeSessionWarning
+          ? `Existing student enrolled successfully. ${activeSessionWarning}`
+          : "Existing student enrolled successfully.",
+      );
       setEnrollClassId("");
     } catch (enrollError) {
       setMessageType("error");
@@ -6045,8 +6262,11 @@ function TeacherDashboard({
   onStartSession,
   onFinishSession,
   onMarkAttendance,
+  onRefreshStudentList,
   onSaveNote,
   onOpenStudentProfile,
+  rosterMessage,
+  highlightedStudentIds,
 }: {
   teacher: Teacher | null;
   unfinishedSessions: SummerSession[];
@@ -6058,10 +6278,14 @@ function TeacherDashboard({
   onStartSession: (item: SummerSession) => void;
   onFinishSession: (item: SummerSession) => void;
   onMarkAttendance: (item: SummerSession, studentId: string, status: AttendanceStatus) => void;
+  onRefreshStudentList: (item: SummerSession) => void;
   onSaveNote: (item: SummerSession, body: string) => void;
   onOpenStudentProfile: (studentId: string) => void;
+  rosterMessage: string | null;
+  highlightedStudentIds: string[];
 }) {
   const [noteDraft, setNoteDraft] = useState("");
+  const studentListRef = useRef<HTMLDivElement | null>(null);
   const sessionHasStarted = Boolean(selectedSession?.startedAt);
   const sessionHasFinished = Boolean(selectedSession?.finishedAt);
   const canEditSessionWork = selectedSession ? canTeacherEditLiveSession(selectedSession) : false;
@@ -6073,6 +6297,15 @@ function TeacherDashboard({
   useEffect(() => {
     setNoteDraft(selectedSession?.note ?? "");
   }, [selectedSession?.id, selectedSession?.note]);
+
+  useEffect(() => {
+    if (highlightedStudentIds.length === 0) return;
+    const highlightedRow = studentListRef.current?.querySelector(".student-row.newly-added");
+    highlightedRow?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "center",
+    });
+  }, [highlightedStudentIds, selectedSession?.id]);
 
   if (!teacher) {
     return (
@@ -6195,6 +6428,20 @@ function TeacherDashboard({
             </div>
           )}
 
+          {canEditSessionWork && (
+            <div className="teacher-roster-toolbar">
+              <button
+                type="button"
+                className="secondary"
+                disabled={actionLoading}
+                onClick={() => onRefreshStudentList(selectedSession)}
+              >
+                Refresh Student List
+              </button>
+              {rosterMessage && <span>{rosterMessage}</span>}
+            </div>
+          )}
+
           {!sessionHasStarted ? (
             <div className="locked-panel">Start the session to unlock attendance controls.</div>
           ) : !canEditSessionWork ? (
@@ -6205,9 +6452,12 @@ function TeacherDashboard({
               class_students/students.
             </div>
           ) : (
-            <div className="student-list">
+            <div className="student-list" ref={studentListRef}>
               {selectedSession.students.map((student) => (
-                <article className="student-row" key={student.id}>
+                <article
+                  className={highlightedStudentIds.includes(student.id) ? "student-row newly-added" : "student-row"}
+                  key={student.id}
+                >
                   <div>
                     <button
                       className="student-name-button"
@@ -7403,6 +7653,16 @@ function normalizeTurkishPhoneForComparison(value: string) {
 
 function isEnrollmentActiveForLesson(enrollment: ClassStudentRow, lessonDate: string) {
   return enrollment.joined_at <= lessonDate && (!enrollment.left_at || enrollment.left_at >= lessonDate);
+}
+
+function getActiveSessionEnrollmentWarning(sessions: SummerSession[], classId: string, joinedAt: string) {
+  const hasActiveSessionOnEnrollmentDate = sessions.some(
+    (item) => item.classId === classId && item.lessonDate === joinedAt && item.startedAt && !item.finishedAt,
+  );
+
+  return hasActiveSessionOnEnrollmentDate
+    ? "This class currently has an active session. The teacher must refresh the student list and record attendance for the new student."
+    : null;
 }
 
 function getStudentProfileTimeline(student: StudentRecord) {

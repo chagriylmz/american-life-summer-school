@@ -4032,6 +4032,19 @@ select:focus {
   gap: 10px;
 }
 
+.teacher-roster-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.teacher-roster-toolbar span {
+  color: var(--navy);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
 .locked-panel {
   border: 1px dashed #bdc9d9;
   border-radius: 12px;
@@ -4065,6 +4078,13 @@ select:focus {
   border-radius: 13px;
   padding: 15px;
   background: #f8fbff;
+  scroll-margin-top: 24px;
+}
+
+.student-row.newly-added {
+  border-color: rgba(210, 10, 63, 0.42);
+  background: #fff4f7;
+  box-shadow: 0 0 0 3px rgba(210, 10, 63, 0.08);
 }
 
 .chip {
