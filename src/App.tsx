@@ -9,19 +9,23 @@ import { getDateOffset, isSummerSchoolActiveDate } from "./lib/summerSchoolCalen
 type UserRole = "admin" | "staff" | "teacher" | "student";
 type AttendanceStatus = "present" | "late" | "absent" | "excused";
 type ParentNotificationType = "late" | "absent";
-type LessonStatus = "scheduled" | "completed" | "cancelled";
+type LessonStatus = "scheduled" | "completed" | "cancelled" | "not_held";
 type ActivityActionType =
   | "session_started"
   | "attendance_updated"
   | "lesson_note_saved"
   | "session_finished"
   | "historical_session_finished"
+  | "retroactive_session_completed"
+  | "historical_session_cancelled"
+  | "historical_session_not_held"
   | "late_entry_updated"
   | "student_transferred";
 type AdminTab =
   | "dashboard"
   | "live-sessions"
   | "session-history"
+  | "unstarted-past-sessions"
   | "attention-needed"
   | "administration"
   | "user-management"
@@ -734,7 +738,7 @@ function App() {
       return [];
     }
 
-    const lessonRows = (lessons ?? []) as LessonRow[];
+    const lessonRows = ((lessons ?? []) as LessonRow[]).filter((item) => item.status !== "not_held");
     if (lessonRows.length === 0) return [];
 
     const classIds = [...new Set(lessonRows.map((item) => item.class_id))];
@@ -1086,6 +1090,110 @@ function App() {
         recorded_retroactively: true,
         changed_count: rowsToSave.length,
       });
+      await loadCoordinatorDashboard();
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function completeUnstartedHistoricalSession(item: SummerSession) {
+    if (!profile || !isCoordinator) {
+      setError("Only coordinators can complete historical sessions.");
+      return;
+    }
+
+    if (!canCompleteUnstartedHistoricalSession(item)) {
+      setError("Only past sessions that were never started can be completed here.");
+      return;
+    }
+
+    if (!hasCompletedAttendance(item)) {
+      setError("Attendance must be completed before completing the session.");
+      return;
+    }
+
+    if (item.note.trim().length === 0) {
+      setError("Lesson note must be saved before completing the session.");
+      return;
+    }
+
+    setActionLoading(true);
+    setError(null);
+
+    try {
+      const { error: completeError } = await supabase.rpc("complete_unstarted_historical_lesson", {
+        p_lesson_id: item.id,
+      });
+
+      if (completeError) {
+        console.error("[Historical sessions] Could not complete unstarted lesson", completeError);
+        setError(getClientErrorMessage(completeError, "Could not complete this historical session."));
+        return;
+      }
+
+      await loadCoordinatorDashboard();
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function cancelUnstartedHistoricalSession(item: SummerSession, reason: string) {
+    if (!profile || !isCoordinator) {
+      throw new Error("Only coordinators can cancel historical sessions.");
+    }
+
+    if (!canCompleteUnstartedHistoricalSession(item)) {
+      throw new Error("Only past sessions that were never started can be cancelled here.");
+    }
+
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      throw new Error("Cancellation reason is required.");
+    }
+
+    setActionLoading(true);
+    setError(null);
+
+    try {
+      const { error: cancelError } = await supabase.rpc("cancel_unstarted_historical_lesson", {
+        p_lesson_id: item.id,
+        p_reason: trimmedReason,
+      });
+
+      if (cancelError) {
+        console.error("[Historical sessions] Could not cancel unstarted lesson", cancelError);
+        throw new Error(getClientErrorMessage(cancelError, "Could not cancel this historical session."));
+      }
+
+      await loadCoordinatorDashboard();
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function markUnstartedHistoricalSessionNotHeld(item: SummerSession, reason: string) {
+    if (!profile || !isCoordinator) {
+      throw new Error("Only coordinators can mark historical sessions not held.");
+    }
+
+    if (!canCompleteUnstartedHistoricalSession(item)) {
+      throw new Error("Only past sessions that were never started can be marked not held here.");
+    }
+
+    setActionLoading(true);
+    setError(null);
+
+    try {
+      const { error: notHeldError } = await supabase.rpc("mark_unstarted_historical_lesson_not_held", {
+        p_lesson_id: item.id,
+        p_reason: reason.trim() || null,
+      });
+
+      if (notHeldError) {
+        console.error("[Historical sessions] Could not mark unstarted lesson not held", notHeldError);
+        throw new Error(getClientErrorMessage(notHeldError, "Could not mark this historical session not held."));
+      }
+
       await loadCoordinatorDashboard();
     } finally {
       setActionLoading(false);
@@ -1753,6 +1861,9 @@ function App() {
           onRefreshUsers={loadManagedUsers}
           onLinkTeacherLogin={linkTeacherLogin}
           onSaveRetroactiveAttendance={saveRetroactiveAttendance}
+          onCompleteUnstartedHistoricalSession={completeUnstartedHistoricalSession}
+          onCancelUnstartedHistoricalSession={cancelUnstartedHistoricalSession}
+          onMarkUnstartedHistoricalSessionNotHeld={markUnstartedHistoricalSessionNotHeld}
           onTransferStudent={transferStudentAssignment}
           teacherLinkingMessage={teacherLinkingMessage}
           onOpenStudentProfile={setSelectedProfileStudentId}
@@ -1951,6 +2062,9 @@ function CoordinatorDashboard({
   onRefreshUsers,
   onLinkTeacherLogin,
   onSaveRetroactiveAttendance,
+  onCompleteUnstartedHistoricalSession,
+  onCancelUnstartedHistoricalSession,
+  onMarkUnstartedHistoricalSessionNotHeld,
   onTransferStudent,
   teacherLinkingMessage,
   onOpenStudentProfile,
@@ -1975,6 +2089,9 @@ function CoordinatorDashboard({
   onRefreshUsers: () => Promise<void>;
   onLinkTeacherLogin: (teacherId: string, userId: string) => Promise<void>;
   onSaveRetroactiveAttendance: (lessonId: string, drafts: Record<string, RetroAttendanceDraft>) => Promise<void>;
+  onCompleteUnstartedHistoricalSession: (item: SummerSession) => Promise<void>;
+  onCancelUnstartedHistoricalSession: (item: SummerSession, reason: string) => Promise<void>;
+  onMarkUnstartedHistoricalSessionNotHeld: (item: SummerSession, reason: string) => Promise<void>;
   onTransferStudent: (input: {
     studentId: string;
     currentClassId: string;
@@ -2040,6 +2157,7 @@ function CoordinatorDashboard({
       if (dateCompare !== 0) return dateCompare;
       return b.startsAt.localeCompare(a.startsAt);
     });
+  const unstartedPastSessions = useMemo(() => getUnstartedPastSessions(sessions), [sessions]);
   const activeSessions = todaySessions.filter((item) => item.startedAt && !item.finishedAt);
   const completedSessions = todaySessions.filter((item) => item.finishedAt);
   const upcomingSessions = todaySessions.filter((item) => !item.startedAt && !item.finishedAt);
@@ -2335,6 +2453,20 @@ function CoordinatorDashboard({
           </div>
         )}
       </section>
+          </div>
+
+          <div hidden={activeAdminTab !== "unstarted-past-sessions"}>
+            <UnstartedPastSessionsPanel
+              actionLoading={actionLoading}
+              activityLogs={activityLogs}
+              sessions={unstartedPastSessions}
+              onCancelSession={onCancelUnstartedHistoricalSession}
+              onCompleteSession={onCompleteUnstartedHistoricalSession}
+              onMarkAttendance={onMarkAttendance}
+              onMarkNotHeld={onMarkUnstartedHistoricalSessionNotHeld}
+              onOpenStudentProfile={onOpenStudentProfile}
+              onSaveNote={onSaveNote}
+            />
           </div>
 
           <div hidden={activeAdminTab !== "activity-feed"}>
@@ -4620,6 +4752,9 @@ function CoordinatorSessionRow({
   onOpenStudentProfile,
   compact = false,
   showLessonDate = false,
+  defaultExpanded = false,
+  defaultEditingEnabled = false,
+  finishButtonLabel = "Finish session",
 }: {
   item: SummerSession;
   actionLoading: boolean;
@@ -4630,9 +4765,12 @@ function CoordinatorSessionRow({
   onOpenStudentProfile: (studentId: string) => void;
   compact?: boolean;
   showLessonDate?: boolean;
+  defaultExpanded?: boolean;
+  defaultEditingEnabled?: boolean;
+  finishButtonLabel?: string;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [editingEnabled, setEditingEnabled] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [editingEnabled, setEditingEnabled] = useState(defaultEditingEnabled);
   const [noteDraft, setNoteDraft] = useState(item.note);
   const lifecycle = getLifecycleStatus(item);
   const attendanceDone = hasCompletedAttendance(item);
@@ -4651,8 +4789,9 @@ function CoordinatorSessionRow({
   }, [item.id, item.note]);
 
   useEffect(() => {
-    setEditingEnabled(false);
-  }, [item.id]);
+    setExpanded(defaultExpanded);
+    setEditingEnabled(defaultEditingEnabled);
+  }, [defaultEditingEnabled, defaultExpanded, item.id]);
 
   const enableEditing = () => {
     if (window.confirm("You are about to modify teacher records. Continue?")) {
@@ -4803,7 +4942,7 @@ function CoordinatorSessionRow({
                 disabled={actionLoading || !canFinish}
                 onClick={() => onFinishSession(item)}
               >
-                Finish session
+                {finishButtonLabel}
               </button>
             )}
           </section>
@@ -4849,6 +4988,176 @@ function CoordinatorSessionRow({
         </div>
       )}
     </article>
+  );
+}
+
+function UnstartedPastSessionsPanel({
+  actionLoading,
+  activityLogs,
+  sessions,
+  onCancelSession,
+  onCompleteSession,
+  onMarkAttendance,
+  onMarkNotHeld,
+  onOpenStudentProfile,
+  onSaveNote,
+}: {
+  actionLoading: boolean;
+  activityLogs: ActivityLogRow[];
+  sessions: SummerSession[];
+  onCancelSession: (item: SummerSession, reason: string) => Promise<void>;
+  onCompleteSession: (item: SummerSession) => Promise<void>;
+  onMarkAttendance: (item: SummerSession, studentId: string, status: AttendanceStatus) => void;
+  onMarkNotHeld: (item: SummerSession, reason: string) => Promise<void>;
+  onOpenStudentProfile: (studentId: string) => void;
+  onSaveNote: (item: SummerSession, body: string) => void;
+}) {
+  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
+  const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState<string | null>(null);
+  const [messageType, setMessageType] = useState<"success" | "error">("success");
+  const selectedSession = selectedLessonId ? sessions.find((item) => item.id === selectedLessonId) ?? null : null;
+
+  useEffect(() => {
+    if (selectedLessonId && !sessions.some((item) => item.id === selectedLessonId)) {
+      setSelectedLessonId(null);
+    }
+  }, [selectedLessonId, sessions]);
+
+  const updateReason = (lessonId: string, value: string) => {
+    setReasons((current) => ({ ...current, [lessonId]: value }));
+  };
+
+  const runAction = async (successMessage: string, action: () => Promise<void>) => {
+    setMessage(null);
+    try {
+      await action();
+      setMessageType("success");
+      setMessage(successMessage);
+    } catch (actionError) {
+      setMessageType("error");
+      setMessage(getClientErrorMessage(actionError, "Could not update this historical session."));
+    }
+  };
+
+  return (
+    <section className="session-group unstarted-past-panel">
+      <div className="section-heading compact">
+        <h3>Unstarted Past Sessions</h3>
+        <p>{sessions.length} historical sessions need administrative review</p>
+      </div>
+
+      {message && <p className={messageType === "success" ? "management-message" : "error"}>{message}</p>}
+
+      {sessions.length === 0 ? (
+        <div className="panel">
+          <p className="muted">No unstarted past sessions.</p>
+        </div>
+      ) : (
+        <div className="unstarted-past-grid">
+          {sessions.map((item) => {
+            const reason = reasons[item.id] ?? "";
+            const canCancel = reason.trim().length > 0 && !actionLoading;
+            const isSelected = selectedLessonId === item.id;
+
+            return (
+              <article className={isSelected ? "unstarted-past-card active" : "unstarted-past-card"} key={item.id}>
+                <div className="unstarted-past-card-header">
+                  <div>
+                    <strong>{formatShortLessonDate(item.lessonDate)}</strong>
+                    <span>{formatTime(item.startsAt)}-{formatTime(item.endsAt)}</span>
+                  </div>
+                  <span className="status-pill warning">{getLessonAgeLabel(item.lessonDate)}</span>
+                </div>
+                <dl className="unstarted-past-meta">
+                  <div>
+                    <dt>Class</dt>
+                    <dd>{item.className}</dd>
+                  </div>
+                  <div>
+                    <dt>Teacher</dt>
+                    <dd>{item.teacherName}</dd>
+                  </div>
+                  <div>
+                    <dt>Room</dt>
+                    <dd>{item.location ?? "Room not set"}</dd>
+                  </div>
+                </dl>
+                <label className="unstarted-reason-field">
+                  Cancellation reason
+                  <input
+                    value={reason}
+                    onChange={(event) => updateReason(item.id, event.target.value)}
+                    placeholder="Required for cancellation"
+                  />
+                </label>
+                <div className="unstarted-past-actions">
+                  <button
+                    className="secondary"
+                    type="button"
+                    onClick={() => {
+                      setSelectedLessonId(item.id);
+                      setMessage(null);
+                    }}
+                  >
+                    Complete Retroactively
+                  </button>
+                  <button
+                    className="secondary danger"
+                    type="button"
+                    disabled={!canCancel}
+                    onClick={() =>
+                      runAction("Historical session cancelled.", () => onCancelSession(item, reason))
+                    }
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() =>
+                      runAction("Historical session marked not held.", () => onMarkNotHeld(item, reason))
+                    }
+                  >
+                    Mark Not Held
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {selectedSession && (
+        <div className="unstarted-completion-workflow">
+          <div className="admin-breadcrumb-row">
+            <div>
+              <p className="admin-breadcrumb">
+                Administration &gt; Unstarted Past Sessions &gt; {selectedSession.className}
+              </p>
+              <h4>Complete Retroactively</h4>
+            </div>
+            <button className="secondary" type="button" onClick={() => setSelectedLessonId(null)}>
+              Back to Unstarted Past Sessions
+            </button>
+          </div>
+          <CoordinatorSessionRow
+            actionLoading={actionLoading}
+            activityLogs={activityLogs}
+            defaultEditingEnabled
+            defaultExpanded
+            finishButtonLabel="Complete retroactively"
+            item={selectedSession}
+            onFinishSession={onCompleteSession}
+            onMarkAttendance={onMarkAttendance}
+            onOpenStudentProfile={onOpenStudentProfile}
+            onSaveNote={onSaveNote}
+            showLessonDate
+          />
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -5538,6 +5847,7 @@ function getAdministrationNavGroups(_isAdmin: boolean): AdministrationNavGroup[]
         { id: "dashboard", label: "Overview" },
         { id: "live-sessions", label: "Live Sessions" },
         { id: "session-history", label: "Session History" },
+        { id: "unstarted-past-sessions", label: "Unstarted Past Sessions" },
         { id: "retroactive-attendance", label: "Attendance" },
         { id: "student-records", label: "Student Records" },
         { id: "attention-needed", label: "Attention Needed" },
@@ -5553,6 +5863,7 @@ function getAllowedAdminTabs(isAdmin: boolean): AdminTab[] {
     "dashboard",
     "live-sessions",
     "session-history",
+    "unstarted-past-sessions",
     "retroactive-attendance",
     "student-records",
     "student-management",
@@ -5581,6 +5892,7 @@ function normalizeAdminTab(value: string | null): AdminTab | null {
     value === "overview" ||
     value === "live-sessions" ||
     value === "session-history" ||
+    value === "unstarted-past-sessions" ||
     value === "attention-needed" ||
     value === "administration" ||
     value === "user-management" ||
@@ -5610,6 +5922,7 @@ function getAdminNavIcon(tab: AdminTab): DashboardIconName {
   if (tab === "dashboard") return "home";
   if (tab === "live-sessions") return "calendar";
   if (tab === "session-history") return "history";
+  if (tab === "unstarted-past-sessions") return "history";
   if (tab === "retroactive-attendance") return "attendance";
   if (tab === "student-records") return "users";
   if (tab === "attention-needed") return "bell";
@@ -6816,6 +7129,18 @@ function getTeacherUnfinishedSessions(sessions: SummerSession[]) {
     });
 }
 
+function getUnstartedPastSessions(sessions: SummerSession[]) {
+  return sessions
+    .filter(canCompleteUnstartedHistoricalSession)
+    .sort((a, b) => {
+      const dateCompare = a.lessonDate.localeCompare(b.lessonDate);
+      if (dateCompare !== 0) return dateCompare;
+      return `${a.startsAt}-${a.teacherName}-${a.location ?? ""}`.localeCompare(
+        `${b.startsAt}-${b.teacherName}-${b.location ?? ""}`,
+      );
+    });
+}
+
 function getTeacherFinishBlockers(item: SummerSession) {
   const blockers: string[] = [];
   if (!hasCompletedAttendance(item)) blockers.push("Complete attendance first.");
@@ -6891,6 +7216,16 @@ function getSessionStartBlockedReason(item: SummerSession) {
 
 function canCoordinatorEditSessionRecord(item: SummerSession) {
   return !item.finishedAt && (Boolean(item.startedAt) || canUseLateEntry(item));
+}
+
+function canCompleteUnstartedHistoricalSession(item: SummerSession) {
+  return (
+    item.lessonDate < getTodayDate() &&
+    !item.startedAt &&
+    !item.finishedAt &&
+    item.status !== "cancelled" &&
+    item.status !== "not_held"
+  );
 }
 
 function canTeacherEditLiveSession(item: SummerSession) {
@@ -7030,6 +7365,20 @@ function formatLessonDateWithWeekday(value: string) {
     day: "numeric",
     year: "numeric",
   }).format(new Date(value));
+}
+
+function formatShortLessonDate(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
+
+function getLessonAgeLabel(value: string) {
+  const lessonDate = new Date(`${value}T00:00:00`);
+  const today = new Date(`${getTodayDate()}T00:00:00`);
+  const daysOld = Math.max(1, Math.floor((today.getTime() - lessonDate.getTime()) / 86_400_000));
+  return daysOld === 1 ? "1 day old" : `${daysOld} days old`;
 }
 
 function formatTimelineDate(value: string) {
@@ -7182,9 +7531,14 @@ function getActivityDisplay(
     sessionItem?.teacherName ??
     (log.teacher_id ? teacherById.get(log.teacher_id)?.display_name : null) ??
     "Unknown teacher";
+  const detailStart = log.details ? stringFromDetails(log.details, "starts_at") : null;
+  const detailEnd = log.details ? stringFromDetails(log.details, "ends_at") : null;
+  const detailRoom = log.details ? stringFromDetails(log.details, "room") : null;
   const sessionLabel = sessionItem
     ? `${formatTime(sessionItem.startsAt)}-${formatTime(sessionItem.endsAt)} - ${sessionItem.location ?? "Room not set"}`
-    : "Session details unavailable";
+    : detailStart && detailEnd
+      ? `${formatTime(detailStart)}-${formatTime(detailEnd)} - ${detailRoom ?? "Room not set"}`
+      : "Session details unavailable";
 
   return { teacherName, sessionLabel };
 }
@@ -7229,6 +7583,12 @@ function getActivityLabel(actionType: ActivityActionType) {
       return "Finished session";
     case "historical_session_finished":
       return "Finished historical session";
+    case "retroactive_session_completed":
+      return "Completed retroactive session";
+    case "historical_session_cancelled":
+      return "Cancelled historical session";
+    case "historical_session_not_held":
+      return "Marked session not held";
     case "late_entry_updated":
       return "Updated late entry";
     case "student_transferred":
@@ -7250,6 +7610,12 @@ function getActivityIcon(actionType: ActivityActionType) {
       return "Done";
     case "historical_session_finished":
       return "Done";
+    case "retroactive_session_completed":
+      return "Done";
+    case "historical_session_cancelled":
+      return "Stop";
+    case "historical_session_not_held":
+      return "Hold";
     case "late_entry_updated":
       return "Late";
     case "student_transferred":

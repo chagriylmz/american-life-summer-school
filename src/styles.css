@@ -949,6 +949,108 @@ select:focus {
   color: var(--navy);
 }
 
+.unstarted-past-panel {
+  gap: 16px;
+}
+
+.unstarted-past-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.unstarted-past-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.unstarted-past-card.active {
+  border-color: rgba(20, 130, 208, 0.42);
+  box-shadow: 0 0 0 3px rgba(20, 130, 208, 0.1);
+}
+
+.unstarted-past-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.unstarted-past-card-header div {
+  display: grid;
+  gap: 3px;
+}
+
+.unstarted-past-card-header strong {
+  color: var(--navy);
+  font-size: 1.1rem;
+}
+
+.unstarted-past-card-header span:not(.status-pill) {
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.unstarted-past-meta {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.unstarted-past-meta div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.unstarted-past-meta dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.unstarted-past-meta dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.unstarted-reason-field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.unstarted-reason-field input {
+  min-height: 38px;
+}
+
+.unstarted-past-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.unstarted-past-actions button {
+  flex: 1 1 150px;
+}
+
+.unstarted-completion-workflow {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
 .session-details-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4043,7 +4145,8 @@ select:focus {
   .overview-grid,
   .operations-overview-grid,
   .support-stats,
-  .session-card-grid {
+  .session-card-grid,
+  .unstarted-past-grid {
     grid-template-columns: 1fr;
   }
 
