@@ -3710,6 +3710,80 @@ select:focus {
   text-transform: uppercase;
 }
 
+.unfinished-empty-state {
+  display: grid;
+  gap: 4px;
+  border: 1px dashed rgba(16, 40, 83, 0.22);
+  border-radius: 12px;
+  padding: 12px;
+  color: var(--muted);
+  background: #f8fbff;
+  font-size: 0.86rem;
+}
+
+.unfinished-empty-state strong {
+  color: var(--navy);
+}
+
+.unfinished-session-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(220, 0, 45, 0.22);
+  border-radius: 14px;
+  padding: 10px;
+  background: #fff8fb;
+}
+
+.unfinished-session-card.active {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(220, 0, 45, 0.1);
+}
+
+.unfinished-session-select {
+  display: grid;
+  width: 100%;
+  height: auto;
+  justify-items: start;
+  gap: 3px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.unfinished-session-select span {
+  color: var(--red);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.unfinished-session-select strong {
+  color: var(--navy);
+}
+
+.unfinished-session-select small {
+  color: var(--muted);
+}
+
+.unfinished-session-select:focus-visible {
+  outline: 3px solid rgba(20, 130, 208, 0.35);
+  outline-offset: 3px;
+}
+
+.unfinished-session-finish {
+  width: 100%;
+}
+
+.unfinished-session-card p {
+  margin: 0;
+  color: var(--red);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 .session-tab {
   display: grid;
   height: auto;

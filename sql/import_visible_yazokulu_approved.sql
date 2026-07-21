@@ -9,11 +9,12 @@ begin;
 -- Business start date for this approved summer school import.
 -- Do not use current_date here; the import may be run after classes started.
 create temp table tmp_visible_yazokulu_dates (
-  start_date date not null
+  start_date date not null,
+  end_date date not null
 ) on commit drop;
 
-insert into tmp_visible_yazokulu_dates (start_date)
-values (date '2026-07-06');
+insert into tmp_visible_yazokulu_dates (start_date, end_date)
+values (date '2026-07-06', date '2026-08-12');
 
 with teacher_data(employee_code, display_name, bio) as (
   values
@@ -228,7 +229,7 @@ begin
         'active',
         16,
         (select start_date from tmp_visible_yazokulu_dates),
-        (select start_date from tmp_visible_yazokulu_dates) + interval '8 weeks',
+        (select end_date from tmp_visible_yazokulu_dates),
         jsonb_build_array(jsonb_build_object(
           'days', 'Monday-Wednesday',
           'starts_at', to_char(row_data.starts_at, 'HH24:MI'),
@@ -247,7 +248,7 @@ begin
         status = 'active',
         capacity = 16,
         start_date = (select start_date from tmp_visible_yazokulu_dates),
-        end_date = (select start_date from tmp_visible_yazokulu_dates) + interval '8 weeks',
+        end_date = (select end_date from tmp_visible_yazokulu_dates),
         schedule = jsonb_build_array(jsonb_build_object(
           'days', 'Monday-Wednesday',
           'starts_at', to_char(row_data.starts_at, 'HH24:MI'),
@@ -284,7 +285,7 @@ begin
       'scheduled'
     from generate_series(
       (select start_date from tmp_visible_yazokulu_dates),
-      (select start_date from tmp_visible_yazokulu_dates) + interval '8 weeks',
+      (select end_date from tmp_visible_yazokulu_dates),
       interval '1 day'
     ) as lesson_days(lesson_day)
     where extract(isodow from lesson_day) in (1, 2, 3)

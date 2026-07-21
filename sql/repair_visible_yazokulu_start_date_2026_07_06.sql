@@ -24,6 +24,7 @@ begin;
 do $$
 declare
   target_start_date constant date := date '2026-07-06';
+  target_end_date constant date := date '2026-08-12';
   expected_class_count constant integer := 7;
   affected_class_count integer;
   moved_lesson_count integer;
@@ -60,7 +61,7 @@ begin
   update public.classes c
   set
     start_date = target_start_date,
-    end_date = target_start_date + interval '8 weeks',
+    end_date = target_end_date,
     updated_at = now()
   from tmp_visible_yazokulu_classes target
   where c.id = target.class_id;
@@ -124,7 +125,7 @@ begin
   from tmp_visible_yazokulu_classes c
   cross join generate_series(
     target_start_date,
-    target_start_date + interval '8 weeks',
+    target_end_date,
     interval '1 day'
   ) as lesson_days(lesson_day)
   where extract(isodow from lesson_day) in (1, 2, 3)

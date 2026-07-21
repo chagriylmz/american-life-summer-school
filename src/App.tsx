@@ -15,6 +15,7 @@ type ActivityActionType =
   | "attendance_updated"
   | "lesson_note_saved"
   | "session_finished"
+  | "historical_session_finished"
   | "late_entry_updated"
   | "student_transferred";
 type AdminTab =
@@ -1306,6 +1307,24 @@ function App() {
 
     setActionLoading(true);
     setError(null);
+
+    if (!isCoordinator && canTeacherCompleteOverdueSession(item)) {
+      const { error: finishError } = await supabase.rpc("finish_teacher_unfinished_lesson", {
+        p_lesson_id: item.id,
+      });
+
+      if (finishError) {
+        console.error("[Finish unfinished lesson] RPC failed", finishError);
+        setError(finishError.message);
+        setActionLoading(false);
+        return;
+      }
+
+      await refreshCurrentRoleData();
+      setActionLoading(false);
+      return;
+    }
+
     let finishQuery = supabase
       .from("lessons")
       .update({
@@ -1347,6 +1366,36 @@ function App() {
     }
     setActionLoading(true);
     setError(null);
+
+    if (!isCoordinator && canTeacherCompleteOverdueSession(item)) {
+      const { data: savedAttendance, error: attendanceError } = await supabase.rpc(
+        "save_teacher_unfinished_lesson_attendance",
+        {
+          p_lesson_id: item.id,
+          p_student_id: studentId,
+          p_status: status,
+        },
+      );
+
+      if (attendanceError) {
+        console.error("[Attendance] Could not save unfinished lesson attendance", attendanceError);
+        setError(getFriendlySupabaseSaveError(attendanceError, "attendance"));
+      } else {
+        const attendanceRow = savedAttendance as AttendanceRow | null;
+        await queueParentNotificationLog(item, studentId, attendanceRow?.id ?? null, status);
+        await logActivity("attendance_updated", item, {
+          student_id: studentId,
+          status,
+          historical_unfinished_session: true,
+        });
+      }
+
+      await refreshCurrentRoleData();
+      setSelectedSessionId(item.id);
+      setActionLoading(false);
+      return;
+    }
+
     const { data: savedAttendance, error: attendanceError } = await supabase
       .from("attendance")
       .upsert(
@@ -1463,6 +1512,28 @@ function App() {
     }
     setActionLoading(true);
     setError(null);
+
+    if (!isCoordinator && canTeacherCompleteOverdueSession(item)) {
+      const { error: noteError } = await supabase.rpc("save_teacher_unfinished_lesson_note", {
+        p_lesson_id: item.id,
+        p_body: body,
+      });
+
+      if (noteError) {
+        console.error("[Lesson note] Could not save unfinished lesson note", noteError);
+        setError(getFriendlySupabaseSaveError(noteError, "lesson_notes"));
+      } else {
+        await logActivity("lesson_note_saved", item, {
+          note_length: body.trim().length,
+          historical_unfinished_session: true,
+        });
+      }
+
+      await refreshCurrentRoleData();
+      setSelectedSessionId(item.id);
+      setActionLoading(false);
+      return;
+    }
 
     let existingNoteQuery = supabase
       .from("lesson_notes")
@@ -5063,23 +5134,49 @@ function TeacherDashboard({
           <p>Teacher Dashboard · Summer School Module</p>
         </div>
         <div className="session-tabs">
-          {unfinishedSessions.length > 0 && (
-            <div className="teacher-session-section">
-              <h3>Unfinished sessions</h3>
-              {unfinishedSessions.map((item) => (
-                <button
-                  className={item.id === selectedSessionId ? "session-tab active urgent" : "session-tab urgent"}
+          <div className="teacher-session-section">
+            <h3>Unfinished sessions</h3>
+            {unfinishedSessions.length === 0 ? (
+              <div className="unfinished-empty-state">
+                <strong>No unfinished sessions.</strong>
+                <span>All of your previous sessions have been completed.</span>
+              </div>
+            ) : (
+              unfinishedSessions.map((item) => {
+                const finishBlockers = getTeacherFinishBlockers(item);
+                const canFinishUnfinished = finishBlockers.length === 0;
+
+                return (
+                <article
+                  className={item.id === selectedSessionId ? "unfinished-session-card active" : "unfinished-session-card"}
                   key={item.id}
-                  type="button"
-                  onClick={() => onSelectSession(item.id)}
                 >
+                  <button
+                    className="unfinished-session-select"
+                    type="button"
+                    onClick={() => onSelectSession(item.id)}
+                  >
                   <span>{formatDate(item.lessonDate)}</span>
                   <strong>{formatTime(item.startsAt)}-{formatTime(item.endsAt)} · {item.location ?? "Room not set"}</strong>
-                  <em>Needs completion</em>
-                </button>
-              ))}
-            </div>
-          )}
+                  <small>{item.className}</small>
+                  <small>Started {formatTimestamp(item.startedAt)}</small>
+                  <small>{hasCompletedAttendance(item) ? "Attendance completed" : "Attendance incomplete"}</small>
+                  <small>{item.note.trim() ? "Lesson note saved" : "Lesson note missing"}</small>
+                  </button>
+                  <button
+                    className="secondary unfinished-session-finish"
+                    type="button"
+                    disabled={actionLoading || !canFinishUnfinished}
+                    onClick={() => onFinishSession(item)}
+                  >
+                    Finish Session
+                  </button>
+                  {!canFinishUnfinished && <p>{finishBlockers.join(" ")}</p>}
+                </article>
+                );
+              })
+            )}
+          </div>
 
           <div className="teacher-session-section">
             <h3>Today's sessions</h3>
@@ -6719,6 +6816,13 @@ function getTeacherUnfinishedSessions(sessions: SummerSession[]) {
     });
 }
 
+function getTeacherFinishBlockers(item: SummerSession) {
+  const blockers: string[] = [];
+  if (!hasCompletedAttendance(item)) blockers.push("Complete attendance first.");
+  if (!item.note.trim()) blockers.push("Save a lesson note first.");
+  return blockers;
+}
+
 function pickTeacherSessionCard(classLessons: SummerSession[]) {
   const sortedLessons = [...classLessons].sort((a, b) => {
     const dateCompare = a.lessonDate.localeCompare(b.lessonDate);
@@ -7123,6 +7227,8 @@ function getActivityLabel(actionType: ActivityActionType) {
       return "Saved lesson note";
     case "session_finished":
       return "Finished session";
+    case "historical_session_finished":
+      return "Finished historical session";
     case "late_entry_updated":
       return "Updated late entry";
     case "student_transferred":
@@ -7141,6 +7247,8 @@ function getActivityIcon(actionType: ActivityActionType) {
     case "lesson_note_saved":
       return "Note";
     case "session_finished":
+      return "Done";
+    case "historical_session_finished":
       return "Done";
     case "late_entry_updated":
       return "Late";
