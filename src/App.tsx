@@ -845,8 +845,13 @@ function App() {
     return lessonRows.map((lesson) => {
       const classRow = classById.get(lesson.class_id);
       const teacherRow = lesson.teacher_id ? teacherById.get(lesson.teacher_id) : null;
-      const students = enrollmentRows
-        .filter((row) => row.class_id === lesson.class_id && isEnrollmentActiveForLesson(row, lesson.lesson_date))
+      const activeEnrollmentRows = enrollmentRows.filter(
+        (row) => row.class_id === lesson.class_id && isEnrollmentActiveForLesson(row, lesson.lesson_date),
+      );
+      const uniqueEnrollmentStudents = Array.from(
+        new Map(activeEnrollmentRows.map((row) => [row.student_id, row])).values(),
+      );
+      const students = uniqueEnrollmentStudents
         .map((row) => studentByEnrollment.get(`${row.class_id}:${row.student_id}`))
         .filter((student): student is SessionStudent => Boolean(student))
         .map((student) => {

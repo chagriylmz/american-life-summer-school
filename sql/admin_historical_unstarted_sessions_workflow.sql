@@ -52,6 +52,7 @@ declare
   lesson_record public.lessons%rowtype;
   completed_lesson public.lessons%rowtype;
   missing_student_ids uuid[];
+  missing_student_names text[];
   missing_student_count integer;
 begin
   if actor_id is null or not public.current_user_is_coordinator() then
@@ -93,27 +94,38 @@ begin
     raise exception 'Lesson note must be saved before completing the session.';
   end if;
 
-  select
-    coalesce(array_agg(cs.student_id order by cs.student_id), array[]::uuid[]),
-    count(*)::integer
-    into missing_student_ids, missing_student_count
+  with expected_students as (
+    select distinct cs.student_id
     from public.class_students cs
     where cs.class_id = lesson_record.class_id
       and cs.joined_at <= lesson_record.lesson_date
       and (cs.left_at is null or cs.left_at >= lesson_record.lesson_date)
-      and not exists (
-        select 1
-        from public.attendance a
-        where a.lesson_id = lesson_record.id
-          and a.class_id = lesson_record.class_id
-          and a.student_id = cs.student_id
-          and a.status is not null
-      );
+  ),
+  completed_attendance as (
+    select distinct a.student_id
+    from public.attendance a
+    where a.lesson_id = lesson_record.id
+      and a.status is not null
+  ),
+  missing_students as (
+    select es.student_id, s.full_name
+    from expected_students es
+    left join completed_attendance ca on ca.student_id = es.student_id
+    left join public.students s on s.id = es.student_id
+    where ca.student_id is null
+  )
+  select
+    coalesce(array_agg(ms.student_id order by coalesce(ms.full_name, ms.student_id::text)), array[]::uuid[]),
+    coalesce(array_agg(coalesce(ms.full_name, ms.student_id::text) order by coalesce(ms.full_name, ms.student_id::text)), array[]::text[]),
+    count(*)::integer
+    into missing_student_ids, missing_student_names, missing_student_count
+  from missing_students ms;
 
   if missing_student_count > 0 then
     raise exception 'Attendance must be completed before completing the session. Missing attendance for % student(s): %',
       missing_student_count,
-      missing_student_ids;
+      array_to_string(missing_student_names, ', ')
+      using detail = 'Missing student IDs: ' || array_to_string(missing_student_ids, ', ');
   end if;
 
   update public.lessons
