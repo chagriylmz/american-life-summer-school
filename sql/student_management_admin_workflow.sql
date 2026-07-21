@@ -177,13 +177,23 @@ begin
     full_name,
     student_code,
     guardian_phone,
-    date_of_birth
+    date_of_birth,
+    native_language,
+    target_language,
+    current_level,
+    enrollment_date,
+    is_active
   )
   values (
     regexp_replace(trim(p_full_name), '\s+', ' ', 'g'),
     trim(p_student_code),
     normalized_phone,
-    case when p_birth_year is null then null else make_date(p_birth_year, 1, 1) end
+    case when p_birth_year is null then null else make_date(p_birth_year, 1, 1) end,
+    'Turkish',
+    'English',
+    'beginner',
+    p_joined_at,
+    true
   )
   returning * into new_student;
 
