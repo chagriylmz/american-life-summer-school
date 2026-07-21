@@ -20,7 +20,10 @@ type ActivityActionType =
   | "historical_session_cancelled"
   | "historical_session_not_held"
   | "late_entry_updated"
-  | "student_transferred";
+  | "student_created"
+  | "student_enrolled"
+  | "student_transferred"
+  | "student_details_updated";
 type AdminTab =
   | "dashboard"
   | "live-sessions"
@@ -288,11 +291,14 @@ type StudentManagementRow = {
   studentId: string;
   studentName: string;
   studentCode: string | null;
+  birthYear: string | null;
+  guardianPhone: string | null;
   classId: string;
   className: string;
   teacherName: string;
   room: string | null;
   timeLabel: string;
+  enrollmentStatus: "active";
 };
 
 type TransferClassOption = {
@@ -301,6 +307,30 @@ type TransferClassOption = {
   teacherName: string;
   room: string | null;
   timeLabel: string;
+};
+
+type StudentCreateInput = {
+  fullName: string;
+  studentCode: string;
+  birthYear: string;
+  guardianPhone: string;
+  classId: string;
+  joinedAt: string;
+  forceCreate: boolean;
+};
+
+type StudentEnrollInput = {
+  studentId: string;
+  classId: string;
+  joinedAt: string;
+};
+
+type StudentUpdateInput = {
+  studentId: string;
+  fullName: string;
+  studentCode: string;
+  birthYear: string;
+  guardianPhone: string;
 };
 
 type GlobalStudentSearchResult = {
@@ -1269,6 +1299,87 @@ function App() {
     }
   }
 
+  async function createStudentWithEnrollment(input: StudentCreateInput) {
+    if (!profile || !isCoordinator) {
+      throw new Error("Only coordinators can create students.");
+    }
+
+    setActionLoading(true);
+    setError(null);
+    try {
+      const { error: createError } = await supabase.rpc("create_student_with_enrollment", {
+        p_full_name: input.fullName,
+        p_student_code: input.studentCode,
+        p_birth_year: input.birthYear.trim() ? Number(input.birthYear) : null,
+        p_guardian_phone: input.guardianPhone.trim() || null,
+        p_class_id: input.classId,
+        p_joined_at: input.joinedAt,
+        p_force_create: input.forceCreate,
+      });
+
+      if (createError) {
+        console.error("[Student management] Create student RPC failed", createError);
+        throw new Error(getClientErrorMessage(createError, "Could not create this student."));
+      }
+
+      await loadCoordinatorDashboard();
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function enrollExistingStudent(input: StudentEnrollInput) {
+    if (!profile || !isCoordinator) {
+      throw new Error("Only coordinators can enroll students.");
+    }
+
+    setActionLoading(true);
+    setError(null);
+    try {
+      const { error: enrollError } = await supabase.rpc("enroll_existing_student", {
+        p_student_id: input.studentId,
+        p_class_id: input.classId,
+        p_joined_at: input.joinedAt,
+      });
+
+      if (enrollError) {
+        console.error("[Student management] Enroll existing student RPC failed", enrollError);
+        throw new Error(getClientErrorMessage(enrollError, "Could not enroll this student."));
+      }
+
+      await loadCoordinatorDashboard();
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function updateStudentDetails(input: StudentUpdateInput) {
+    if (!profile || !isCoordinator) {
+      throw new Error("Only coordinators can update students.");
+    }
+
+    setActionLoading(true);
+    setError(null);
+    try {
+      const { error: updateError } = await supabase.rpc("update_student_details", {
+        p_student_id: input.studentId,
+        p_full_name: input.fullName,
+        p_student_code: input.studentCode,
+        p_birth_year: input.birthYear.trim() ? Number(input.birthYear) : null,
+        p_guardian_phone: input.guardianPhone.trim() || null,
+      });
+
+      if (updateError) {
+        console.error("[Student management] Update student RPC failed", updateError);
+        throw new Error(getClientErrorMessage(updateError, "Could not update this student."));
+      }
+
+      await loadCoordinatorDashboard();
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function startSession(item: SummerSession) {
     const blockedReason = getSessionStartBlockedReason(item);
     if (blockedReason) {
@@ -1900,6 +2011,9 @@ function App() {
           onCompleteUnstartedHistoricalSession={completeUnstartedHistoricalSession}
           onCancelUnstartedHistoricalSession={cancelUnstartedHistoricalSession}
           onMarkUnstartedHistoricalSessionNotHeld={markUnstartedHistoricalSessionNotHeld}
+          onCreateStudentWithEnrollment={createStudentWithEnrollment}
+          onEnrollExistingStudent={enrollExistingStudent}
+          onUpdateStudentDetails={updateStudentDetails}
           onTransferStudent={transferStudentAssignment}
           teacherLinkingMessage={teacherLinkingMessage}
           onOpenStudentProfile={setSelectedProfileStudentId}
@@ -2101,6 +2215,9 @@ function CoordinatorDashboard({
   onCompleteUnstartedHistoricalSession,
   onCancelUnstartedHistoricalSession,
   onMarkUnstartedHistoricalSessionNotHeld,
+  onCreateStudentWithEnrollment,
+  onEnrollExistingStudent,
+  onUpdateStudentDetails,
   onTransferStudent,
   teacherLinkingMessage,
   onOpenStudentProfile,
@@ -2128,6 +2245,9 @@ function CoordinatorDashboard({
   onCompleteUnstartedHistoricalSession: (item: SummerSession) => Promise<void>;
   onCancelUnstartedHistoricalSession: (item: SummerSession, reason: string) => Promise<void>;
   onMarkUnstartedHistoricalSessionNotHeld: (item: SummerSession, reason: string) => Promise<void>;
+  onCreateStudentWithEnrollment: (input: StudentCreateInput) => Promise<void>;
+  onEnrollExistingStudent: (input: StudentEnrollInput) => Promise<void>;
+  onUpdateStudentDetails: (input: StudentUpdateInput) => Promise<void>;
   onTransferStudent: (input: {
     studentId: string;
     currentClassId: string;
@@ -2582,7 +2702,11 @@ function CoordinatorDashboard({
             <StudentManagementPanel
               actionLoading={actionLoading}
               classOptions={transferClassOptions}
+              onCreateStudentWithEnrollment={onCreateStudentWithEnrollment}
+              onEnrollExistingStudent={onEnrollExistingStudent}
+              onOpenStudentProfile={onOpenStudentProfile}
               onTransferStudent={onTransferStudent}
+              onUpdateStudentDetails={onUpdateStudentDetails}
               rows={studentManagementRows}
             />
           </div>
@@ -4047,11 +4171,18 @@ function StudentRecordsPanel({
 function StudentManagementPanel({
   actionLoading,
   classOptions,
+  onCreateStudentWithEnrollment,
+  onEnrollExistingStudent,
+  onOpenStudentProfile,
   onTransferStudent,
+  onUpdateStudentDetails,
   rows,
 }: {
   actionLoading: boolean;
   classOptions: TransferClassOption[];
+  onCreateStudentWithEnrollment: (input: StudentCreateInput) => Promise<void>;
+  onEnrollExistingStudent: (input: StudentEnrollInput) => Promise<void>;
+  onOpenStudentProfile: (studentId: string) => void;
   onTransferStudent: (input: {
     studentId: string;
     currentClassId: string;
@@ -4059,10 +4190,25 @@ function StudentManagementPanel({
     effectiveDate: string;
     transferNote: string | null;
   }) => Promise<void>;
+  onUpdateStudentDetails: (input: StudentUpdateInput) => Promise<void>;
   rows: StudentManagementRow[];
 }) {
   const [searchValue, setSearchValue] = useState("");
   const [selectedRow, setSelectedRow] = useState<StudentManagementRow | null>(null);
+  const [activeMode, setActiveMode] = useState<"create" | "enroll" | "edit" | "transfer">("create");
+  const [createFullName, setCreateFullName] = useState("");
+  const [createStudentCode, setCreateStudentCode] = useState("");
+  const [createBirthYear, setCreateBirthYear] = useState("");
+  const [createGuardianPhone, setCreateGuardianPhone] = useState("");
+  const [createClassId, setCreateClassId] = useState("");
+  const [createJoinedAt, setCreateJoinedAt] = useState(() => getTodayDate());
+  const [forceCreate, setForceCreate] = useState(false);
+  const [enrollClassId, setEnrollClassId] = useState("");
+  const [enrollJoinedAt, setEnrollJoinedAt] = useState(() => getTodayDate());
+  const [editFullName, setEditFullName] = useState("");
+  const [editStudentCode, setEditStudentCode] = useState("");
+  const [editBirthYear, setEditBirthYear] = useState("");
+  const [editGuardianPhone, setEditGuardianPhone] = useState("");
   const [targetClassId, setTargetClassId] = useState("");
   const [effectiveDate, setEffectiveDate] = useState(() => getDefaultSummerSchoolHistoryDate(getTodayDate()));
   const [transferNote, setTransferNote] = useState("");
@@ -4070,6 +4216,20 @@ function StudentManagementPanel({
   const [messageType, setMessageType] = useState<"success" | "error">("success");
   const filteredRows = rows.filter((item) => matchesStudentManagementSearch(item, normalizeSearchText(searchValue)));
   const targetOption = classOptions.find((item) => item.classId === targetClassId) ?? null;
+  const createClassOption = classOptions.find((item) => item.classId === createClassId) ?? null;
+  const enrollClassOption = classOptions.find((item) => item.classId === enrollClassId) ?? null;
+  const possibleDuplicates = getPossibleStudentDuplicates(rows, createFullName, createStudentCode, createGuardianPhone);
+  const canCreate =
+    Boolean(createFullName.trim()) &&
+    Boolean(createStudentCode.trim()) &&
+    Boolean(createClassOption) &&
+    Boolean(createJoinedAt) &&
+    !actionLoading &&
+    (possibleDuplicates.length === 0 || forceCreate);
+  const canEnrollExisting = Boolean(selectedRow && enrollClassOption && enrollJoinedAt) && !actionLoading;
+  const canUpdateDetails =
+    Boolean(selectedRow && editFullName.trim() && editStudentCode.trim()) &&
+    !actionLoading;
   const canSubmit =
     Boolean(selectedRow) &&
     Boolean(targetOption) &&
@@ -4083,8 +4243,86 @@ function StudentManagementPanel({
     setTargetClassId("");
     setEffectiveDate(getDefaultSummerSchoolHistoryDate(getTodayDate()));
     setTransferNote("");
+    setEnrollClassId("");
+    setEnrollJoinedAt(getTodayDate());
+    setEditFullName(selectedRow.studentName);
+    setEditStudentCode(selectedRow.studentCode ?? "");
+    setEditBirthYear(selectedRow.birthYear ?? "");
+    setEditGuardianPhone(selectedRow.guardianPhone ?? "");
     setMessage(null);
   }, [selectedRow]);
+
+  const resetCreateForm = () => {
+    setCreateFullName("");
+    setCreateStudentCode("");
+    setCreateBirthYear("");
+    setCreateGuardianPhone("");
+    setCreateClassId("");
+    setCreateJoinedAt(getTodayDate());
+    setForceCreate(false);
+  };
+
+  const handleCreateStudent = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canCreate) return;
+    setMessage(null);
+    try {
+      await onCreateStudentWithEnrollment({
+        fullName: createFullName.trim(),
+        studentCode: createStudentCode.trim(),
+        birthYear: createBirthYear.trim(),
+        guardianPhone: createGuardianPhone.trim(),
+        classId: createClassId,
+        joinedAt: createJoinedAt,
+        forceCreate,
+      });
+      setMessageType("success");
+      setMessage("Student created and enrolled successfully.");
+      resetCreateForm();
+    } catch (createError) {
+      setMessageType("error");
+      setMessage(getClientErrorMessage(createError, "Could not create this student."));
+    }
+  };
+
+  const handleEnrollExisting = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedRow || !canEnrollExisting) return;
+    setMessage(null);
+    try {
+      await onEnrollExistingStudent({
+        studentId: selectedRow.studentId,
+        classId: enrollClassId,
+        joinedAt: enrollJoinedAt,
+      });
+      setMessageType("success");
+      setMessage("Existing student enrolled successfully.");
+      setEnrollClassId("");
+    } catch (enrollError) {
+      setMessageType("error");
+      setMessage(getClientErrorMessage(enrollError, "Could not enroll this student."));
+    }
+  };
+
+  const handleUpdateDetails = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedRow || !canUpdateDetails) return;
+    setMessage(null);
+    try {
+      await onUpdateStudentDetails({
+        studentId: selectedRow.studentId,
+        fullName: editFullName.trim(),
+        studentCode: editStudentCode.trim(),
+        birthYear: editBirthYear.trim(),
+        guardianPhone: editGuardianPhone.trim(),
+      });
+      setMessageType("success");
+      setMessage("Student details updated successfully.");
+    } catch (updateError) {
+      setMessageType("error");
+      setMessage(getClientErrorMessage(updateError, "Could not update this student."));
+    }
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -4128,6 +4366,210 @@ function StudentManagementPanel({
 
       {message && <p className={messageType === "success" ? "management-message" : "error"}>{message}</p>}
 
+      <div className="student-management-actions" aria-label="Student management actions">
+        <button
+          className="secondary"
+          type="button"
+          disabled={!selectedRow}
+          onClick={() => {
+            if (selectedRow) {
+              onOpenStudentProfile(selectedRow.studentId);
+            }
+          }}
+        >
+          View Student
+        </button>
+        <button
+          className={activeMode === "create" ? "secondary active" : "secondary"}
+          type="button"
+          onClick={() => setActiveMode("create")}
+        >
+          Add Student
+        </button>
+        <button
+          className={activeMode === "enroll" ? "secondary active" : "secondary"}
+          type="button"
+          onClick={() => setActiveMode("enroll")}
+        >
+          Add Existing to Class
+        </button>
+        <button
+          className={activeMode === "edit" ? "secondary active" : "secondary"}
+          type="button"
+          onClick={() => setActiveMode("edit")}
+        >
+          Edit Details
+        </button>
+        <button
+          className={activeMode === "transfer" ? "secondary active" : "secondary"}
+          type="button"
+          onClick={() => setActiveMode("transfer")}
+        >
+          Transfer Class
+        </button>
+      </div>
+
+      {activeMode === "create" && (
+        <form className="student-management-form" onSubmit={handleCreateStudent}>
+          <div>
+            <h5>Add Student</h5>
+            <p>Create a student and enroll them into a class/session in one secure action.</p>
+          </div>
+          <div className="student-management-form-grid">
+            <label>
+              Full name
+              <input value={createFullName} onChange={(event) => setCreateFullName(event.target.value)} required />
+            </label>
+            <label>
+              Student code
+              <input value={createStudentCode} onChange={(event) => setCreateStudentCode(event.target.value)} required />
+            </label>
+            <label>
+              Birth year
+              <input
+                inputMode="numeric"
+                value={createBirthYear}
+                onChange={(event) => setCreateBirthYear(event.target.value)}
+                placeholder="Optional"
+              />
+            </label>
+            <label>
+              Guardian phone
+              <input
+                value={createGuardianPhone}
+                onChange={(event) => setCreateGuardianPhone(event.target.value)}
+                placeholder="Optional"
+              />
+            </label>
+            <label>
+              Class
+              <select value={createClassId} onChange={(event) => setCreateClassId(event.target.value)} required>
+                <option value="">Choose class/session</option>
+                {classOptions.map((item) => (
+                  <option value={item.classId} key={item.classId}>
+                    {item.teacherName} - {item.timeLabel} - {item.room ?? "Room not set"} - {item.className}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Enrollment start date
+              <input type="date" value={createJoinedAt} onChange={(event) => setCreateJoinedAt(event.target.value)} required />
+            </label>
+          </div>
+          {possibleDuplicates.length > 0 && (
+            <div className="duplicate-warning">
+              <strong>Possible existing student found</strong>
+              {possibleDuplicates.map((item) => (
+                <button
+                  type="button"
+                  className="inline-student-button"
+                  key={item.studentId}
+                  onClick={() => {
+                    setSelectedRow(item);
+                    setActiveMode("enroll");
+                  }}
+                >
+                  {item.studentName} - {item.studentCode ?? "No student code"} - {item.guardianPhone ?? "No phone"}
+                </button>
+              ))}
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={forceCreate}
+                  onChange={(event) => setForceCreate(event.target.checked)}
+                />
+                Create anyway (admin-only; student code must still be unique)
+              </label>
+            </div>
+          )}
+          <button type="submit" disabled={!canCreate}>
+            {actionLoading ? "Creating student..." : "Save student"}
+          </button>
+        </form>
+      )}
+
+      {activeMode === "enroll" && (
+        <form className="student-management-form" onSubmit={handleEnrollExisting}>
+          <div>
+            <h5>Add Existing Student to Class</h5>
+            <p>Select a student from the list, then choose the class/session and start date.</p>
+          </div>
+          {!selectedRow ? (
+            <div className="locked-panel">Select an existing student first.</div>
+          ) : (
+            <>
+              <div className="transfer-summary-grid">
+                <div>
+                  <span>Student</span>
+                  <strong>{selectedRow.studentName}</strong>
+                  <p>{selectedRow.studentCode ?? "No student code"}</p>
+                </div>
+                <div>
+                  <span>Current class</span>
+                  <strong>{selectedRow.className}</strong>
+                  <p>{selectedRow.teacherName} - {selectedRow.timeLabel}</p>
+                </div>
+              </div>
+              <label>
+                Class
+                <select value={enrollClassId} onChange={(event) => setEnrollClassId(event.target.value)} required>
+                  <option value="">Choose class/session</option>
+                  {classOptions.map((item) => (
+                    <option value={item.classId} key={item.classId}>
+                      {item.teacherName} - {item.timeLabel} - {item.room ?? "Room not set"} - {item.className}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Enrollment start date
+                <input type="date" value={enrollJoinedAt} onChange={(event) => setEnrollJoinedAt(event.target.value)} required />
+              </label>
+              <button type="submit" disabled={!canEnrollExisting}>
+                {actionLoading ? "Enrolling student..." : "Enroll existing student"}
+              </button>
+            </>
+          )}
+        </form>
+      )}
+
+      {activeMode === "edit" && (
+        <form className="student-management-form" onSubmit={handleUpdateDetails}>
+          <div>
+            <h5>Edit Student Details</h5>
+            <p>Update basic student information. Student ID cannot be changed.</p>
+          </div>
+          {!selectedRow ? (
+            <div className="locked-panel">Select a student first.</div>
+          ) : (
+            <>
+              <div className="student-management-form-grid">
+                <label>
+                  Full name
+                  <input value={editFullName} onChange={(event) => setEditFullName(event.target.value)} required />
+                </label>
+                <label>
+                  Student code
+                  <input value={editStudentCode} onChange={(event) => setEditStudentCode(event.target.value)} required />
+                </label>
+                <label>
+                  Birth year
+                  <input value={editBirthYear} onChange={(event) => setEditBirthYear(event.target.value)} />
+                </label>
+                <label>
+                  Guardian phone
+                  <input value={editGuardianPhone} onChange={(event) => setEditGuardianPhone(event.target.value)} />
+                </label>
+              </div>
+              <button type="submit" disabled={!canUpdateDetails}>
+                {actionLoading ? "Updating student..." : "Save details"}
+              </button>
+            </>
+          )}
+        </form>
+      )}
+
       <div className="student-management-layout">
         <div className="student-management-results">
           {filteredRows.length === 0 ? (
@@ -4142,15 +4584,17 @@ function StudentManagementPanel({
               >
                 <strong>{item.studentName}</strong>
                 <span>{item.studentCode ?? "No student code"}</span>
+                <span>{item.birthYear ? `Birth year ${item.birthYear}` : "Birth year missing"}</span>
+                <span>{item.guardianPhone ?? "Guardian phone missing"}</span>
                 <span>{item.teacherName} - {item.timeLabel} - {item.room ?? "Room not set"}</span>
                 <span>{item.className}</span>
-                <em>Transfer Student</em>
+                <em>{item.enrollmentStatus}</em>
               </button>
             ))
           )}
         </div>
 
-        <form className="student-transfer-panel" onSubmit={handleSubmit}>
+        {activeMode === "transfer" && <form className="student-transfer-panel" onSubmit={handleSubmit}>
           <div>
             <h5>Transfer Student</h5>
             <p>Move one student to a different class/session from the selected effective date.</p>
@@ -4223,7 +4667,7 @@ function StudentManagementPanel({
               </button>
             </>
           )}
-        </form>
+        </form>}
       </div>
     </section>
   );
@@ -6054,6 +6498,7 @@ function getAdministrationNavGroups(_isAdmin: boolean): AdministrationNavGroup[]
         { id: "unstarted-past-sessions", label: "Unstarted Past Sessions" },
         { id: "retroactive-attendance", label: "Attendance" },
         { id: "student-records", label: "Student Records" },
+        { id: "student-management", label: "Student Management" },
         { id: "attention-needed", label: "Attention Needed" },
         { id: "reports", label: "Reports" },
         { id: "administration", label: "Administration" },
@@ -6870,11 +7315,14 @@ function getStudentManagementRows(sessions: SummerSession[]) {
         studentId: student.id,
         studentName: student.fullName,
         studentCode: student.studentCode,
+        birthYear: student.birthYear,
+        guardianPhone: student.guardianPhone,
         classId: sessionItem.classId,
         className: sessionItem.className,
         teacherName: sessionItem.teacherName,
         room: sessionItem.location,
         timeLabel,
+        enrollmentStatus: "active",
       });
     }
   }
@@ -6910,7 +7358,47 @@ function getTransferClassOptions(sessions: SummerSession[]) {
 
 function matchesStudentManagementSearch(item: StudentManagementRow, searchText: string) {
   if (!searchText) return true;
-  return [item.studentName, item.studentCode].some((value) => searchable(value).includes(searchText));
+  return [item.studentName, item.studentCode, item.guardianPhone].some((value) => searchable(value).includes(searchText));
+}
+
+function getPossibleStudentDuplicates(
+  rows: StudentManagementRow[],
+  fullName: string,
+  studentCode: string,
+  guardianPhone: string,
+) {
+  const normalizedCode = studentCode.trim().toLowerCase();
+  const normalizedName = normalizeDuplicateName(fullName);
+  const normalizedPhone = normalizeTurkishPhoneForComparison(guardianPhone);
+
+  if (!normalizedCode && !normalizedName && !normalizedPhone) return [];
+
+  const uniqueRows = new Map<string, StudentManagementRow>();
+  for (const row of rows) {
+    if (uniqueRows.has(row.studentId)) continue;
+    const rowCode = row.studentCode?.trim().toLowerCase() ?? "";
+    const rowName = normalizeDuplicateName(row.studentName);
+    const rowPhone = normalizeTurkishPhoneForComparison(row.guardianPhone ?? "");
+    const codeMatch = Boolean(normalizedCode && rowCode === normalizedCode);
+    const namePhoneMatch = Boolean(normalizedName && normalizedPhone && rowName === normalizedName && rowPhone === normalizedPhone);
+    const phoneMatch = Boolean(normalizedPhone && rowPhone === normalizedPhone);
+    if (codeMatch || namePhoneMatch || phoneMatch) uniqueRows.set(row.studentId, row);
+  }
+
+  return Array.from(uniqueRows.values()).sort((a, b) => a.studentName.localeCompare(b.studentName));
+}
+
+function normalizeDuplicateName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("tr-TR");
+}
+
+function normalizeTurkishPhoneForComparison(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return `0${digits}`;
+  if (digits.length === 11 && digits.startsWith("0")) return digits;
+  if (digits.length === 12 && digits.startsWith("90")) return `0${digits.slice(2)}`;
+  return digits;
 }
 
 function isEnrollmentActiveForLesson(enrollment: ClassStudentRow, lessonDate: string) {
@@ -7800,8 +8288,14 @@ function getActivityLabel(actionType: ActivityActionType) {
       return "Marked session not held";
     case "late_entry_updated":
       return "Updated late entry";
+    case "student_created":
+      return "Created student";
+    case "student_enrolled":
+      return "Enrolled student";
     case "student_transferred":
       return "Transferred student";
+    case "student_details_updated":
+      return "Updated student details";
     default:
       return actionType;
   }
@@ -7827,8 +8321,14 @@ function getActivityIcon(actionType: ActivityActionType) {
       return "Hold";
     case "late_entry_updated":
       return "Late";
+    case "student_created":
+      return "New";
+    case "student_enrolled":
+      return "Add";
     case "student_transferred":
       return "Move";
+    case "student_details_updated":
+      return "Edit";
     default:
       return "Log";
   }

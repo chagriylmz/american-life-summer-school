@@ -56,7 +56,7 @@ declare
   missing_student_count integer;
 begin
   if actor_id is null or not public.current_user_is_coordinator() then
-    raise exception 'Only coordinators can complete historical lessons.';
+    raise exception 'Only coordinators can complete historical lessons. [AUTH_CHECK]';
   end if;
 
   select *
@@ -66,23 +66,23 @@ begin
   for update;
 
   if not found then
-    raise exception 'Lesson was not found.';
+    raise exception 'Lesson was not found. [LESSON_FOUND_CHECK]';
   end if;
 
   if lesson_record.lesson_date >= (timezone('Europe/Istanbul', now()))::date then
-    raise exception 'Only past lessons can be completed retroactively.';
+    raise exception 'Only past lessons can be completed retroactively. [PAST_DATE_CHECK]';
   end if;
 
   if lesson_record.status = 'cancelled' then
-    raise exception 'Cancelled lessons cannot be completed.';
+    raise exception 'Cancelled lessons cannot be completed. [CANCELLED_STATUS_CHECK]';
   end if;
 
   if lesson_record.status = 'not_held' then
-    raise exception 'Not held lessons cannot be completed.';
+    raise exception 'Not held lessons cannot be completed. [NOT_HELD_STATUS_CHECK]';
   end if;
 
   if lesson_record.started_at is not null or lesson_record.finished_at is not null then
-    raise exception 'This workflow only completes lessons that were never started.';
+    raise exception 'This workflow only completes lessons that were never started. [UNSTARTED_STATE_CHECK]';
   end if;
 
   if not exists (
@@ -91,7 +91,7 @@ begin
     where ln.lesson_id = lesson_record.id
       and length(trim(ln.body)) > 0
   ) then
-    raise exception 'Lesson note must be saved before completing the session.';
+    raise exception 'Lesson note must be saved before completing the session. [LESSON_NOTE_CHECK]';
   end if;
 
   with expected_students as (
@@ -122,7 +122,7 @@ begin
   from missing_students ms;
 
   if missing_student_count > 0 then
-    raise exception 'Attendance must be completed before completing the session. Missing attendance for % student(s): %',
+    raise exception 'Attendance must be completed before completing the session. [ATTENDANCE_COMPLETENESS_CHECK] Missing attendance for % student(s): %',
       missing_student_count,
       array_to_string(missing_student_names, ', ')
       using detail = 'Missing student IDs: ' || array_to_string(missing_student_ids, ', ');
@@ -140,7 +140,7 @@ begin
   returning * into completed_lesson;
 
   if not found then
-    raise exception 'This historical lesson could not be completed.';
+    raise exception 'This historical lesson could not be completed. [FINAL_UPDATE_CHECK]';
   end if;
 
   insert into public.activity_logs (

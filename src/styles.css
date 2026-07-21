@@ -3300,6 +3300,47 @@ select:focus {
   gap: 10px;
 }
 
+.student-management-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.student-management-actions .active {
+  border-color: var(--blue);
+  color: #ffffff;
+  background: var(--blue);
+}
+
+.student-management-form {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.student-management-form h5,
+.student-management-form p {
+  margin: 0;
+}
+
+.student-management-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.duplicate-warning {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(181, 124, 8, 0.28);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fff8e6;
+}
+
 .student-management-row {
   display: grid;
   gap: 4px;
@@ -4432,6 +4473,7 @@ select:focus {
 
   .student-record-layout,
   .student-record-grid,
+  .student-management-form-grid,
   .student-management-layout,
   .attendance-summary-cards,
   .retro-selector-grid,
