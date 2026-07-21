@@ -1052,6 +1052,40 @@ select:focus {
   padding-top: 16px;
 }
 
+.unstarted-diagnostic-panel {
+  border: 1px dashed rgba(16, 40, 83, 0.22);
+  border-radius: 12px;
+  padding: 12px;
+  background: #f8fbff;
+}
+
+.unstarted-diagnostic-panel summary {
+  cursor: pointer;
+  color: var(--navy);
+  font-weight: 900;
+}
+
+.unstarted-diagnostic-panel div {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.unstarted-diagnostic-panel code,
+.unstarted-diagnostic-panel pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.unstarted-diagnostic-panel pre {
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #ffffff;
+}
+
 .session-details-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -192,6 +192,25 @@ type SummerSession = {
   note: string;
 };
 
+type UnstartedCompletionDiagnostic = {
+  lessonId: string;
+  sqlCondition: string;
+  expectedStudents: Array<{
+    student_id: string;
+    full_name: string;
+  }>;
+  attendanceRecords: Array<{
+    student_id: string;
+    status: AttendanceStatus | null;
+  }>;
+  missingStudents: Array<{
+    student_id: string;
+    full_name: string;
+  }>;
+  classStudentRows: Array<Record<string, unknown>>;
+  rpcError: unknown;
+};
+
 type CoordinatorStats = {
   teacherCount: number;
   studentCount: number;
@@ -1131,7 +1150,19 @@ function App() {
       });
 
       if (completeError) {
-        console.error("[Historical sessions] Could not complete unstarted lesson", completeError);
+        console.error("[Historical sessions] complete_unstarted_historical_lesson RPC failed", {
+          lessonId: item.id,
+          classId: item.classId,
+          lessonDate: item.lessonDate,
+          expectedStudentsFromUi: item.students.map((student) => ({
+            student_id: student.id,
+            full_name: student.fullName,
+            attendance_status: student.attendanceStatus,
+          })),
+          sqlCondition:
+            "expected_students: class_students.class_id = lesson.class_id AND joined_at <= lesson_date AND (left_at IS NULL OR left_at >= lesson_date); missing when no attendance row exists for lesson_id + student_id with status IS NOT NULL",
+          rpcError: completeError,
+        });
         setError(getClientErrorMessage(completeError, "Could not complete this historical session."));
         return;
       }
@@ -5021,6 +5052,7 @@ function UnstartedPastSessionsPanel({
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<"success" | "error">("success");
+  const [diagnostic, setDiagnostic] = useState<UnstartedCompletionDiagnostic | null>(null);
   const completionWorkflowRef = useRef<HTMLDivElement | null>(null);
   const selectedSession = selectedLessonId ? sessions.find((item) => item.id === selectedLessonId) ?? null : null;
 
@@ -5043,6 +5075,87 @@ function UnstartedPastSessionsPanel({
 
     return () => window.cancelAnimationFrame(animationFrame);
   }, [selectedSession?.id]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadDiagnostic() {
+      if (!selectedSession) {
+        setDiagnostic(null);
+        return;
+      }
+
+      const sqlCondition =
+        "expected_students: class_students.class_id = lesson.class_id AND joined_at <= lesson_date AND (left_at IS NULL OR left_at >= lesson_date); missing when no attendance row exists for lesson_id + student_id with status IS NOT NULL";
+
+      const [classStudentsResult, attendanceResult] = await Promise.all([
+        supabase
+          .from("class_students")
+          .select("student_id, class_id, joined_at, left_at, status, created_at, students(id, full_name)")
+          .eq("class_id", selectedSession.classId)
+          .lte("joined_at", selectedSession.lessonDate)
+          .or(`left_at.is.null,left_at.gte.${selectedSession.lessonDate}`),
+        supabase
+          .from("attendance")
+          .select("id, lesson_id, class_id, student_id, status")
+          .eq("lesson_id", selectedSession.id),
+      ]);
+
+      if (!isCurrent) return;
+
+      if (classStudentsResult.error || attendanceResult.error) {
+        console.error("[Unstarted completion diagnostic] Could not load diagnostic data", {
+          lessonId: selectedSession.id,
+          classStudentsError: classStudentsResult.error,
+          attendanceError: attendanceResult.error,
+        });
+        return;
+      }
+
+      const classStudentRows = (classStudentsResult.data ?? []) as Array<
+        Record<string, unknown> & { student_id: string; students?: { full_name?: string } | null }
+      >;
+      const attendanceRows = (attendanceResult.data ?? []) as Array<{
+        student_id: string;
+        status: AttendanceStatus | null;
+      }>;
+      const expectedByStudentId = new Map<string, { student_id: string; full_name: string }>();
+
+      for (const row of classStudentRows) {
+        expectedByStudentId.set(row.student_id, {
+          student_id: row.student_id,
+          full_name: row.students?.full_name ?? row.student_id,
+        });
+      }
+
+      const attendedStudentIds = new Set(attendanceRows.filter((row) => row.status).map((row) => row.student_id));
+      const nextDiagnostic: UnstartedCompletionDiagnostic = {
+        lessonId: selectedSession.id,
+        sqlCondition,
+        expectedStudents: Array.from(expectedByStudentId.values()).sort((a, b) =>
+          a.full_name.localeCompare(b.full_name),
+        ),
+        attendanceRecords: attendanceRows.map((row) => ({
+          student_id: row.student_id,
+          status: row.status,
+        })),
+        missingStudents: Array.from(expectedByStudentId.values())
+          .filter((student) => !attendedStudentIds.has(student.student_id))
+          .sort((a, b) => a.full_name.localeCompare(b.full_name)),
+        classStudentRows,
+        rpcError: null,
+      };
+
+      setDiagnostic(nextDiagnostic);
+      console.info("[Unstarted completion diagnostic]", nextDiagnostic);
+    }
+
+    void loadDiagnostic();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedSession]);
 
   const updateReason = (lessonId: string, value: string) => {
     setReasons((current) => ({ ...current, [lessonId]: value }));
@@ -5164,9 +5277,10 @@ function UnstartedPastSessionsPanel({
             <button
               className="secondary"
               type="button"
-              onClick={() => {
+            onClick={() => {
                 setSelectedLessonId(null);
                 setMessage(null);
+                setDiagnostic(null);
               }}
             >
               Back to Unstarted Past Sessions
@@ -5185,6 +5299,65 @@ function UnstartedPastSessionsPanel({
             onSaveNote={onSaveNote}
             showLessonDate
           />
+          <details className="unstarted-diagnostic-panel">
+            <summary>Completion diagnostics</summary>
+            <div>
+              <strong>Lesson ID</strong>
+              <code>{selectedSession.id}</code>
+            </div>
+            <div>
+              <strong>RPC rejection condition</strong>
+              <p>
+                expected_students: class_students.class_id = lesson.class_id AND joined_at &lt;= lesson_date AND
+                (left_at IS NULL OR left_at &gt;= lesson_date). Missing when no attendance row exists for lesson_id +
+                student_id with status IS NOT NULL.
+              </p>
+            </div>
+            {!diagnostic ? (
+              <p className="muted">Loading diagnostic roster...</p>
+            ) : (
+              <>
+                <div>
+                  <strong>Expected students ({diagnostic.expectedStudents.length})</strong>
+                  <ul className="compact-list">
+                    {diagnostic.expectedStudents.map((student) => (
+                      <li key={student.student_id}>
+                        {student.full_name} - <code>{student.student_id}</code>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <strong>Attendance records ({diagnostic.attendanceRecords.length})</strong>
+                  <ul className="compact-list">
+                    {diagnostic.attendanceRecords.map((record) => (
+                      <li key={`${record.student_id}-${record.status ?? "unset"}`}>
+                        <code>{record.student_id}</code> - {record.status ?? "status missing"}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <strong>Missing students ({diagnostic.missingStudents.length})</strong>
+                  {diagnostic.missingStudents.length === 0 ? (
+                    <p className="muted">No missing students according to the diagnostic query.</p>
+                  ) : (
+                    <ul className="compact-list">
+                      {diagnostic.missingStudents.map((student) => (
+                        <li key={student.student_id}>
+                          {student.full_name} - <code>{student.student_id}</code>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <strong>class_students rows used by diagnostic</strong>
+                  <pre>{JSON.stringify(diagnostic.classStudentRows, null, 2)}</pre>
+                </div>
+              </>
+            )}
+          </details>
         </div>
       )}
 
