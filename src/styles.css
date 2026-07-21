@@ -1047,6 +1047,7 @@ select:focus {
 .unstarted-completion-workflow {
   display: grid;
   gap: 12px;
+  scroll-margin-top: 88px;
   border-top: 1px solid var(--border);
   padding-top: 16px;
 }

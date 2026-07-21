@@ -5016,6 +5016,7 @@ function UnstartedPastSessionsPanel({
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<"success" | "error">("success");
+  const completionWorkflowRef = useRef<HTMLDivElement | null>(null);
   const selectedSession = selectedLessonId ? sessions.find((item) => item.id === selectedLessonId) ?? null : null;
 
   useEffect(() => {
@@ -5023,6 +5024,20 @@ function UnstartedPastSessionsPanel({
       setSelectedLessonId(null);
     }
   }, [selectedLessonId, sessions]);
+
+  useEffect(() => {
+    if (!selectedSession) return;
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      completionWorkflowRef.current?.scrollIntoView({
+        behavior: prefersReducedMotion ? "auto" : "smooth",
+        block: "start",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [selectedSession?.id]);
 
   const updateReason = (lessonId: string, value: string) => {
     setReasons((current) => ({ ...current, [lessonId]: value }));
@@ -5130,15 +5145,25 @@ function UnstartedPastSessionsPanel({
       )}
 
       {selectedSession && (
-        <div className="unstarted-completion-workflow">
+        <div className="unstarted-completion-workflow" ref={completionWorkflowRef}>
           <div className="admin-breadcrumb-row">
             <div>
               <p className="admin-breadcrumb">
                 Administration &gt; Unstarted Past Sessions &gt; {selectedSession.className}
               </p>
               <h4>Complete Retroactively</h4>
+              <p className="muted">
+                Complete attendance, save the lesson note, then complete this historical session.
+              </p>
             </div>
-            <button className="secondary" type="button" onClick={() => setSelectedLessonId(null)}>
+            <button
+              className="secondary"
+              type="button"
+              onClick={() => {
+                setSelectedLessonId(null);
+                setMessage(null);
+              }}
+            >
               Back to Unstarted Past Sessions
             </button>
           </div>
@@ -5147,7 +5172,7 @@ function UnstartedPastSessionsPanel({
             activityLogs={activityLogs}
             defaultEditingEnabled
             defaultExpanded
-            finishButtonLabel="Complete retroactively"
+            finishButtonLabel="Complete Session"
             item={selectedSession}
             onFinishSession={onCompleteSession}
             onMarkAttendance={onMarkAttendance}
@@ -5157,6 +5182,7 @@ function UnstartedPastSessionsPanel({
           />
         </div>
       )}
+
     </section>
   );
 }
